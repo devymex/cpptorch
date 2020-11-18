@@ -1,0 +1,14 @@
+__pycache__/
+build/
+.cache/
+
+*.swp
+*.png
+*.gv
+*.pdf
+*.txt
+*.res
+*.log
+*.log.*
+*.pkl
+*.pkl.*
