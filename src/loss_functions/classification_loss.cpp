@@ -6,15 +6,15 @@ namespace tfunc = torch::nn::functional;
 class ClassificationLoss : public BasicLoss {
 public:
 	float Backward(torch::Tensor tOutput, torch::Tensor tTarget) override {
-		size_t nBatchSize = tOutput.size(0);
+		uint64_t nBatchSize = tOutput.size(0);
 		torch::Tensor tLoss = tfunc::nll_loss(tOutput, tTarget);
 		float fLoss = tLoss.item().toFloat() * nBatchSize;
 		tLoss.backward();
 		return fLoss;
 	}
 	float Evaluate(torch::Tensor tOutput, torch::Tensor tTarget) override {
-		size_t nBatchSize = tOutput.size(0);
-		size_t nClassNum = tOutput.size(1);
+		uint64_t nBatchSize = tOutput.size(0);
+		uint64_t nClassNum = tOutput.size(1);
 		torch::Tensor tLoss = tfunc::nll_loss(tOutput, tTarget);
 		float fLoss = tLoss.item().toFloat() * nBatchSize;
 
@@ -23,7 +23,7 @@ public:
 		m_nTotalCnt += nBatchSize;
 	
 		auto tProb = tOutput.to(torch::kCPU);
-		for (size_t i = 0; i < nBatchSize; ++i) {
+		for (uint64_t i = 0; i < nBatchSize; ++i) {
 			float *pSoftmax = tProb[i].data_ptr<float>();
 			m_Results.insert(m_Results.end(), pSoftmax, pSoftmax + nClassNum);
 		}

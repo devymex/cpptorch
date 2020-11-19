@@ -57,7 +57,7 @@ NAMED_PARAMS LoadWeights(const std::string &strFilename) {
 		CHECK_GT(strLine.size(), iNameEnd);
 		const char *pData = strLine.data();
 		std::vector<char> bytes;
-		for (size_t i = iNameEnd + 2; i < strLine.size(); i += 2) {
+		for (uint64_t i = iNameEnd + 2; i < strLine.size(); i += 2) {
 			uint16_t hex = *(uint16_t*)(pData + i);
 			bytes.push_back(char(HexWord2Num(hex)));
 		}
@@ -91,7 +91,7 @@ void Test() {
 	}
 	ary.clear();
 	auto pData = str.data();
-	for (size_t i = 0; i < str.size(); i += 2) {
+	for (uint64_t i = 0; i < str.size(); i += 2) {
 		uint16_t hex = *(uint16_t*)(pData + i);
 		ary.push_back(char(HexWord2Num(hex)));
 	}

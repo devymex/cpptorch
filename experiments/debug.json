@@ -36,5 +36,5 @@
 	"state_path": "experiments/states",
 	"load_last": false,
 	"log_path": "experiments/log",
-	"log_iters": 1
+	"log_iters": 0
 }

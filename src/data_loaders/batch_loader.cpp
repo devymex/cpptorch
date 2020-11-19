@@ -40,7 +40,7 @@ void BatchLoader::ResetCursor() {
 	}
 }
 
-bool BatchLoader::GetBatch(size_t nBatchSize, torch::Device device,
+bool BatchLoader::GetBatch(uint64_t nBatchSize, torch::Device device,
 			torch::Tensor &tData, torch::Tensor &tTarget) {
 	if (m_Worker.joinable()) {
 		m_Worker.join();
@@ -63,7 +63,7 @@ bool BatchLoader::GetBatch(size_t nBatchSize, torch::Device device,
 	//__LoadBatch(_GetBatchIndices(nBatchSize), device,
 	//		m_tLoadingData, m_tLoadingTarget);
 	m_Worker = std::thread(
-		[&](std::vector<size_t> _indices, torch::Device device,
+		[&](std::vector<uint64_t> _indices, torch::Device device,
 				torch::Tensor &_tData, torch::Tensor &_tTarget) {
 			__LoadBatch(std::move(_indices), device, _tData, _tTarget);
 		}, _GetBatchIndices(nBatchSize), device,
@@ -71,15 +71,15 @@ bool BatchLoader::GetBatch(size_t nBatchSize, torch::Device device,
 	return true;
 }
 
-std::vector<size_t> BatchLoader::_GetBatchIndices(size_t nBatchSize) const {
-	std::vector<size_t> indices;
-	for (size_t i = 0; i < nBatchSize; ++i) {
+std::vector<uint64_t> BatchLoader::_GetBatchIndices(uint64_t nBatchSize) const {
+	std::vector<uint64_t> indices;
+	for (uint64_t i = 0; i < nBatchSize; ++i) {
 		indices.push_back(m_Indices[(i + m_nCursor) % Size()]);
 	}
 	return indices;
 }
 
-void BatchLoader::__LoadBatch(std::vector<size_t> indices, torch::Device device,
+void BatchLoader::__LoadBatch(std::vector<uint64_t> indices, torch::Device device,
 		torch::Tensor &tData, torch::Tensor &tTarget) {
 	_LoadBatch(std::move(indices), tData, tTarget);
 	if (tData.device() != device) {

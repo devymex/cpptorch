@@ -25,9 +25,9 @@ void ParseArgsFromJson(const nlohmann::json &jCfg, ArgMan &argman) {
 }
 
 template<>
-void Parser(const nlohmann::json &jValue, size_t &val) {
+void Parser(const nlohmann::json &jValue, uint64_t &val) {
 	CHECK(jValue.is_number_unsigned());
-	val = jValue.get<size_t>();
+	val = jValue.get<uint64_t>();
 }
 
 template<>

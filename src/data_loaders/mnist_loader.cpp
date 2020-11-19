@@ -21,18 +21,18 @@ public:
 		m_pMNIST.reset(new MNIST(argDataRoot(), argTrainSet() ?
 				MNIST::Mode::kTrain : MNIST::Mode::kTest));
 	}
-	size_t Size() const override {
+	uint64_t Size() const override {
 		CHECK(m_pMNIST->size().has_value());
 		return m_pMNIST->size().value();
 	}
 
 protected:
-	void _LoadBatch(std::vector<size_t> indices,
+	void _LoadBatch(std::vector<uint64_t> indices,
 			torch::Tensor &tData, torch::Tensor &tTarget) override {
 		CHECK(!indices.empty());
 		std::vector<torch::Tensor> dataAry;
 		std::vector<torch::Tensor> targetAry;
-		for (size_t i = 0; i < indices.size(); ++i) {
+		for (uint64_t i = 0; i < indices.size(); ++i) {
 			CHECK_LT(indices[i], Size());
 			auto sample = m_pMNIST->get(indices[i]);
 			if (sample.target.dim() == 0) {

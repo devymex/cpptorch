@@ -19,16 +19,16 @@
 namespace bfs = boost::filesystem;
 namespace tfunc = torch::nn::functional;
 
-std::pair<uint32_t, std::string> FindLastState(const std::string &strPath,
+std::pair<uint64_t, std::string> FindLastState(const std::string &strPath,
 		 const std::string &strName) {
 	std::string strPrefix = "^" + strName + "_";
 	std::string strNumber = "e([1-9][0-9]*)";
 	std::string strSuffix = "\\.pkl\\.2[0-9]{11}$";
 	std::string strPattern = strPrefix + strNumber + strSuffix;
-	std::pair<uint32_t, std::string> ret;
+	std::pair<uint64_t, std::string> ret;
 	auto filenames = EnumerateFiles(strPath, strPattern);
 	if (!filenames.empty()) {
-		std::vector<size_t> epochs;
+		std::vector<uint64_t> epochs;
 		for (const auto &strFn : filenames) {
 			std::string strLeaf = bfs::path(strFn).leaf().string();
 			boost::smatch match;
@@ -46,7 +46,7 @@ std::pair<uint32_t, std::string> FindLastState(const std::string &strPath,
 }
 
 std::string MakeStateFilename(const std::string &strPath,
-		const std::string &strModelName, uint32_t nEpoch) {
+		const std::string &strModelName, uint64_t nEpoch) {
 	CHECK_GT(nEpoch, 0);
 	std::time_t now = std::time(nullptr);
 	std::ostringstream ossFilename;
@@ -66,24 +66,24 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	Arg<std::string> argDevice("device");
 	Arg<std::string> argMode("mode", "TRAIN");
 	Arg<std::string> argTestResultsFile("test_result_file");
-	Arg<size_t> argDeviceID("device_id", 0);
+	Arg<uint64_t> argDeviceID("device_id", 0);
 	Arg<std::string> argDataRoot("data_root");
 	Arg<std::string> argTrainList("train_list");
 	Arg<std::string> argTestList("test_list");
 	Arg<std::string> argModelFile("model_file");
 	Arg<bool> argLabelBalance("label_balance", true);
 	Arg<int32_t> argRandomSeed("random_seed", -1);
-	Arg<size_t> argMaxEpoch("max_epoch", 10);
-	Arg<size_t> argBatchSize("batch_size", 32);
+	Arg<uint64_t> argMaxEpoch("max_epoch", 10);
+	Arg<uint64_t> argBatchSize("batch_size", 32);
 	Arg<float> argLearningRate("learning_rate", 0.01f);
-	Arg<size_t> argLRStepSize("lr_step_epochs", 0);
+	Arg<uint64_t> argLRStepSize("lr_step_epochs", 0);
 	Arg<float> argLRStepGamma("lr_step_gamma", 0.f);
 	Arg<float> argWeightDecay("weight_decay", 0.f);
 	Arg<float> argMomentum("momentum", 0.f);
 	Arg<std::string> argLogPath("log_path");
-	Arg<size_t> argLogIters("log_iters", 0);
+	Arg<uint64_t> argLogIters("log_iters", 0);
 	Arg<std::string> argStatePath("state_path");
-	Arg<size_t> argStateSaveEpochs("save_state_epochs", 0);
+	Arg<uint64_t> argStateSaveEpochs("save_state_epochs", 0);
 	Arg<bool> argLoadLast("load_last", false);
 	Arg<nlohmann::json> argModel("model");
 	Arg<nlohmann::json> argLoss("loss");
@@ -159,7 +159,7 @@ int main(int nArgCnt, const char *ppArgs[]) {
 
 	// Module Preparation
 	// -------------------------------------------------------------------------
-	size_t nInitEpoch = 0;
+	uint64_t nInitEpoch = 0;
 	auto pModel = Creator<BasicModel>::Create(argModel());
 	pModel->SetDevice(device);
 	if (argLoadLast()) {
@@ -184,7 +184,7 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	}
 	float fLearningRate = argLearningRate();
 	if (argLRStepSize() > 0) {
-		uint32_t nSteps = nInitEpoch / argLRStepSize();
+		uint64_t nSteps = nInitEpoch / argLRStepSize();
 		fLearningRate *= std::pow(argLRStepGamma(), (float)nSteps);
 	}
 	using SGDOPTION = torch::optim::SGDOptions;
@@ -192,26 +192,26 @@ int main(int nArgCnt, const char *ppArgs[]) {
 			.weight_decay(argWeightDecay())
 			.momentum(argMomentum()));
 	// torch::Tensor tData, tTarget;
-	// for (uint32_t nIter = 1; pTrainLdr->GetBatch(
+	// for (uint64_t nIter = 1; pTrainLdr->GetBatch(
 	// 		argBatchSize(), device, tData, tTarget); ++nIter) {
 	// 	LOG(INFO) << nIter;
 	// }
 
 	// Main Loop
 	// -------------------------------------------------------------------------
-	for (uint32_t nEpoch = 1; nEpoch + nInitEpoch <= argMaxEpoch(); ++nEpoch) {
+	for (uint64_t nEpoch = 1; nEpoch + nInitEpoch <= argMaxEpoch(); ++nEpoch) {
 		torch::Tensor tData, tTarget;
 		auto &sgdOption = static_cast<SGDOPTION&>(sgdOptim.defaults());
 		// Train phase
 		if (argLRStepSize() > 0 && (nEpoch + nInitEpoch) % argLRStepSize() == 0) {
-			uint32_t nSteps = (nEpoch + nInitEpoch) / argLRStepSize();
+			uint64_t nSteps = (nEpoch + nInitEpoch) / argLRStepSize();
 			float fDecay = std::pow(argLRStepGamma(), (float)nSteps);
 			sgdOption.lr(argLearningRate() * fDecay);
 		}
 		pTrainLdr->ResetCursor();
 		pModel->TrainMode(true);
 		float fTrainLossSum = 0.f;
-		for (uint32_t nIter = 1; bTrainMode && pTrainLdr->GetBatch(
+		for (uint64_t nIter = 1; bTrainMode && pTrainLdr->GetBatch(
 				argBatchSize(), device, tData, tTarget); ++nIter) {
 			sgdOptim.zero_grad();
 			torch::Tensor tOutput = pModel->Forward({tData});
@@ -227,10 +227,10 @@ int main(int nArgCnt, const char *ppArgs[]) {
 		pModel->TrainMode(false);
 		float fTestLossSum = 0.f;
 		std::vector<std::pair<int64_t, std::vector<float>>> testResults;
-		for (uint32_t nIter = 1; pTestLdr->GetBatch(
+		for (uint64_t nIter = 1; pTestLdr->GetBatch(
 				argBatchSize(), device, tData, tTarget); ++nIter) {
 			torch::Tensor tOutput = pModel->Forward({tData});
-			uint32_t nEndIdx = nIter * argBatchSize();
+			uint64_t nEndIdx = nIter * argBatchSize();
 			if (nEndIdx > pTestLdr->Size()) {
 				int64_t nValidCnt = pTestLdr->Size()
 						- (nIter - 1) * argBatchSize();
@@ -250,7 +250,8 @@ int main(int nArgCnt, const char *ppArgs[]) {
 		std::string strEpoch = !bTrainMode ? "TEST"
 				: std::to_string(nEpoch + nInitEpoch);
 		LOG(INFO) << "epoch " << strEpoch << ": lr=" << sgdOption.lr()
-				  << ", train=" << strTrainLoss << ", test=" << fTestLossSum
+				  << ", train=" << strTrainLoss
+				  << ", test=" << fTestLossSum / pTestLdr->Size()
 		 		  << ", result: " << pLoss->FlushResults();
 
 		if (argStateSaveEpochs() != 0 && (nEpoch + nInitEpoch)
