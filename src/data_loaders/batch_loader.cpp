@@ -53,17 +53,19 @@ bool BatchLoader::GetBatch(size_t nBatchSize, torch::Device device,
 		return false;
 	}
 	if (m_tLoadingData.dim() == 0 || nBatchSize != m_tLoadingData.size(0)) {
-		_LoadBatch(_GetBatchIndices(nBatchSize), device,
+		__LoadBatch(_GetBatchIndices(nBatchSize), device,
 				m_tLoadingData, m_tLoadingTarget);
 	}
 	m_nCursor += nBatchSize;
 	std::swap(m_tLoadingData, tData);
 	std::swap(m_tLoadingTarget, tTarget);
 
+	//__LoadBatch(_GetBatchIndices(nBatchSize), device,
+	//		m_tLoadingData, m_tLoadingTarget);
 	m_Worker = std::thread(
 		[&](std::vector<size_t> _indices, torch::Device device,
 				torch::Tensor &_tData, torch::Tensor &_tTarget) {
-			_LoadBatch(std::move(_indices), device, _tData, _tTarget);
+			__LoadBatch(std::move(_indices), device, _tData, _tTarget);
 		}, _GetBatchIndices(nBatchSize), device,
 			std::ref(m_tLoadingData), std::ref(m_tLoadingTarget));
 	return true;
@@ -75,4 +77,15 @@ std::vector<size_t> BatchLoader::_GetBatchIndices(size_t nBatchSize) const {
 		indices.push_back(m_Indices[(i + m_nCursor) % Size()]);
 	}
 	return indices;
+}
+
+void BatchLoader::__LoadBatch(std::vector<size_t> indices, torch::Device device,
+		torch::Tensor &tData, torch::Tensor &tTarget) {
+	_LoadBatch(std::move(indices), tData, tTarget);
+	if (tData.device() != device) {
+		tData = tData.to(device);
+	}
+	if (tTarget.device() != device) {
+		tTarget = tTarget.to(device);
+	}
 }

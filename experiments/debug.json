@@ -4,21 +4,26 @@
 	"device": "GPU",
 	"device_id": 0,
 
+	"model": {
+		"name": "RNN",
+		"charset_size": 256,
+		"categories": 18
+	},
+	"loss": {
+		"name": "Classification"
+	},
 	"train_data": {
-		"loader": "MNIST",
+		"name": "Language",
 		"shuffle": true,
-		"data_root": "/mnt/data/prjdata/mnist",
-		"train_set": true
+		"data_root": "/mnt/data/prjdata/language"
 	},
 
 	"test_data": {
-		"loader": "MNIST",
+		"name": "Language",
 		"shuffle": false,
-		"data_root": "/mnt/data/prjdata/mnist",
-		"train_set": false
+		"data_root": "/mnt/data/prjdata/language"
 	},
 
-	"reinit_weights": false,
 	"max_epoch": 500,
 	"batch_size": 32,
 	"learning_rate": 0.01,
@@ -30,5 +35,6 @@
 	"save_state_epochs": 100,
 	"state_path": "experiments/states",
 	"load_last": false,
-	"log_path": "experiments/log"
+	"log_path": "experiments/log",
+	"log_iters": 1
 }

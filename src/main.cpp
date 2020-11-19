@@ -7,12 +7,14 @@
 #include <glog/logging.h>
 #include <opencv2/opencv.hpp>
 
-#include "data_loader.hpp"
 #include "weights.hpp"
-#include "model.hpp"
 #include "utils.hpp"
 #include "argman.hpp"
 #include "json.hpp"
+#include "creator.hpp"
+#include "data_loaders/batch_loader.hpp"
+#include "models/basic_model.hpp"
+#include "loss_functions/basic_loss.hpp"
 
 namespace bfs = boost::filesystem;
 namespace tfunc = torch::nn::functional;
@@ -70,7 +72,6 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	Arg<std::string> argTestList("test_list");
 	Arg<std::string> argModelFile("model_file");
 	Arg<bool> argLabelBalance("label_balance", true);
-	Arg<bool> argReinitWeights("reinit_weights", false);
 	Arg<int32_t> argRandomSeed("random_seed", -1);
 	Arg<size_t> argMaxEpoch("max_epoch", 10);
 	Arg<size_t> argBatchSize("batch_size", 32);
@@ -84,6 +85,8 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	Arg<std::string> argStatePath("state_path");
 	Arg<size_t> argStateSaveEpochs("save_state_epochs", 0);
 	Arg<bool> argLoadLast("load_last", false);
+	Arg<nlohmann::json> argModel("model");
+	Arg<nlohmann::json> argLoss("loss");
 	Arg<nlohmann::json> argTrainData("train_data");
 	Arg<nlohmann::json> argTestData("test_data");
 
@@ -151,34 +154,32 @@ int main(int nArgCnt, const char *ppArgs[]) {
 
 	// Data Loader Preparation
 	// -------------------------------------------------------------------------
-	auto pTrainLdr = CreateDataLoader(argTrainData());
-	auto pTestLdr = CreateDataLoader(argTestData());
+	auto pTrainLdr = Creator<BatchLoader>::Create(argTrainData());
+	auto pTestLdr = Creator<BatchLoader>::Create(argTestData());
 
 	// Module Preparation
 	// -------------------------------------------------------------------------
 	size_t nInitEpoch = 0;
-	Net pModel;
-	pModel->to(device);
+	auto pModel = Creator<BasicModel>::Create(argModel());
+	pModel->SetDevice(device);
 	if (argLoadLast()) {
 		auto lastState = FindLastState(argStatePath(), argConfName());
 		nInitEpoch = lastState.first;
-		pModel->load_weights(argModelFile());
+		pModel->LoadWeights(argModelFile());
 		if (nInitEpoch > 0) {
 			LOG(INFO) << "Weights loaded from last epoch " << nInitEpoch;
 		}
-	} else if (argReinitWeights()) {
-		pModel->initialize(InitModuleWeight);
-		LOG(INFO) << "Weights reinitialized";
 	}
 	if (!bTrainMode) {
 		argMaxEpoch.Set(nInitEpoch + 1);
 		CHECK(!argTestResultsFile().empty());
 	}
+	auto pLoss = Creator<BasicLoss>::Create(argLoss());
 
 	// Optimizer Initialization
 	// -------------------------------------------------------------------------
 	std::vector<torch::Tensor> parameters;
-	for (const auto &pair : pModel->named_parameters()) {
+	for (const auto &pair : pModel->NamedParameters()) {
 		parameters.push_back(pair.second);
 	}
 	float fLearningRate = argLearningRate();
@@ -190,6 +191,11 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	torch::optim::SGD sgdOptim(parameters, SGDOPTION(fLearningRate)
 			.weight_decay(argWeightDecay())
 			.momentum(argMomentum()));
+	// torch::Tensor tData, tTarget;
+	// for (uint32_t nIter = 1; pTrainLdr->GetBatch(
+	// 		argBatchSize(), device, tData, tTarget); ++nIter) {
+	// 	LOG(INFO) << nIter;
+	// }
 
 	// Main Loop
 	// -------------------------------------------------------------------------
@@ -203,84 +209,53 @@ int main(int nArgCnt, const char *ppArgs[]) {
 			sgdOption.lr(argLearningRate() * fDecay);
 		}
 		pTrainLdr->ResetCursor();
-		pModel->train();
-		float fTrainLoss = 0.f;
+		pModel->TrainMode(true);
+		float fTrainLossSum = 0.f;
 		for (uint32_t nIter = 1; bTrainMode && pTrainLdr->GetBatch(
 				argBatchSize(), device, tData, tTarget); ++nIter) {
-			torch::Tensor tOutput = pModel->forward({tData}).toTensor();
-			torch::Tensor tSoftmax = tfunc::log_softmax(tOutput, 1);
-			torch::Tensor tLoss = tfunc::nll_loss(tSoftmax, tTarget);
-			fTrainLoss += tLoss.item().toFloat() * argBatchSize();
 			sgdOptim.zero_grad();
-			tLoss.backward();
+			torch::Tensor tOutput = pModel->Forward({tData});
+			float fLoss = pLoss->Backward(tOutput, tTarget);
+			fTrainLossSum += fLoss;
 			sgdOptim.step();
 			if (argLogIters() > 0 && nIter % argLogIters() == 0) {
-				LOG(INFO) << "train_iter=" << nIter << ", loss="
-						  << tLoss.item().toFloat();
+				LOG(INFO) << "train_iter=" << nIter << ", loss=" << fLoss;
 			}
 		}
 		// Test phase
-		int nCorrectCnt = 0;
 		pTestLdr->ResetCursor();
-		pModel->train(false);
-		float fTestLoss = 0.f;
+		pModel->TrainMode(false);
+		float fTestLossSum = 0.f;
 		std::vector<std::pair<int64_t, std::vector<float>>> testResults;
 		for (uint32_t nIter = 1; pTestLdr->GetBatch(
 				argBatchSize(), device, tData, tTarget); ++nIter) {
-			torch::Tensor tOutput = pModel->forward({tData}).toTensor();
-			torch::Tensor tSoftmax = tfunc::log_softmax(tOutput, 1);
-			torch::Tensor tLoss = tfunc::nll_loss(tSoftmax, tTarget,
-					tfunc::NLLLossFuncOptions().reduction(torch::kSum));
-			fTestLoss += tLoss.item().toFloat();
-			torch::Tensor tPred = tOutput.argmax(1, true);
-
-			tTarget = tTarget.to(torch::kCPU).flatten().contiguous();
-			tPred = tPred.to(torch::kCPU).flatten().contiguous();
-			tSoftmax = tSoftmax.to(torch::kCPU).contiguous();
-			size_t nClassNum = tSoftmax.size(1);
-			for (size_t i = 0; i < argBatchSize(); ++i) {
-				uint32_t nIdx = (nIter - 1) * argBatchSize() + i;
-				if (nIdx < pTestLdr->Size()) {
-					int64_t nPredLabel = tPred[i].item().toLong();
-					nCorrectCnt += (nPredLabel == tTarget[i].item().toLong());
-					if (!bTrainMode) {
-						float *pSoftmax = tSoftmax[i].data_ptr<float>();
-						testResults.emplace_back(nPredLabel, std::vector<float>(
-								pSoftmax, pSoftmax + nClassNum));
-					}
-				}
+			torch::Tensor tOutput = pModel->Forward({tData});
+			uint32_t nEndIdx = nIter * argBatchSize();
+			if (nEndIdx > pTestLdr->Size()) {
+				int64_t nValidCnt = pTestLdr->Size()
+						- (nIter - 1) * argBatchSize();
+				tOutput = tOutput.slice(0, 0, nValidCnt);
+				tTarget = tTarget.slice(0, 0, nValidCnt);
 			}
+			float fLoss = pLoss->Evaluate(tOutput, tTarget);
+			fTestLossSum += fLoss;
 			if (argLogIters() > 0 && nIter % argLogIters() == 0) {
-				LOG(INFO) << "test_iter=" << nIter << ", loss="
-						  << tLoss.item().toFloat();
+				LOG(INFO) << "test_iter=" << nIter << ", loss=" << fLoss;
 			}
 		}
+
 		// Logging phase
-		if (!bTrainMode) {
-			std::ofstream testResFile(argTestResultsFile());
-			CHECK(testResFile.is_open());
-			CHECK_EQ(testResults.size(), pTestLdr->Size());
-			for (auto &row: testResults) {
-				testResFile << row.first;
-				for (auto v: row.second) {
-					testResFile << " " << v;
-				}
-				testResFile << std::endl;
-			}
-			LOG(INFO) << "Tesing results saved into \""
-					  << argTestResultsFile() << "\"";
-		}
 		std::string strTrainLoss = !bTrainMode ? "N/A"
-				: std::to_string(fTrainLoss / pTrainLdr->Size());
+				: std::to_string(fTrainLossSum / pTrainLdr->Size());
 		std::string strEpoch = !bTrainMode ? "TEST"
 				: std::to_string(nEpoch + nInitEpoch);
 		LOG(INFO) << "epoch " << strEpoch << ": lr=" << sgdOption.lr()
-				  << ", train=" << strTrainLoss
-				  << ", test=" << fTestLoss / pTestLdr->Size()
-				  << ", acc=" << (float)nCorrectCnt / pTestLdr->Size();
+				  << ", train=" << strTrainLoss << ", test=" << fTestLossSum
+		 		  << ", result: " << pLoss->FlushResults();
+
 		if (argStateSaveEpochs() != 0 && (nEpoch + nInitEpoch)
 				% argStateSaveEpochs() == 0) {
-			pModel->save_weights(MakeStateFilename(argStatePath(),
+			pModel->SaveWeights(MakeStateFilename(argStatePath(),
 					argConfName(), nEpoch + nInitEpoch));
 		}
 	}

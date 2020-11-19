@@ -17,12 +17,16 @@ public:
 	virtual size_t Size() const = 0;
 	virtual void ResetCursor();
 	virtual bool GetBatch(size_t nBatchSize, torch::Device device,
-			torch::Tensor &tData, torch::Tensor &tLabel);
+			torch::Tensor &tData, torch::Tensor &tTarget);
 
 protected:
 	virtual std::vector<size_t> _GetBatchIndices(size_t nBatchSize) const;
-	virtual void _LoadBatch(std::vector<size_t> indices, torch::Device device,
-			torch::Tensor &tData, torch::Tensor &tLabel) = 0;
+	virtual void _LoadBatch(std::vector<size_t> indices,
+			torch::Tensor &tData, torch::Tensor &tTarget) = 0;
+
+private:
+	void __LoadBatch(std::vector<size_t> indices, torch::Device device,
+			torch::Tensor &tData, torch::Tensor &tTarget);
 
 private:
 	size_t m_nCursor = 0;
