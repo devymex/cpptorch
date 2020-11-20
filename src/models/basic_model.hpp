@@ -17,7 +17,10 @@ struct PARAM_OPTION{
 	float fWDFactor = 1.f;
 	bool operator < (const PARAM_OPTION &b) const {
 		return (b.fLRFactor == fLRFactor && b.fWDFactor < fWDFactor) || 
-				(b.fLRFactor == fLRFactor);
+				(b.fLRFactor < fLRFactor);
+	}
+	bool operator == (const PARAM_OPTION &b) const {
+		return (b.fLRFactor == fLRFactor && b.fWDFactor == fWDFactor);
 	}
 };
 

@@ -8,8 +8,7 @@
 		"name": "RNN",
 		"charset_size": 256,
 		"categories": 18,
-		"hidden_size": 128,
-		"string_length": 20
+		"hidden_size": 128
 	},
 	"loss": {
 		"name": "Classification"
@@ -17,20 +16,18 @@
 	"train_data": {
 		"name": "Language",
 		"shuffle": true,
-		"data_root": "/mnt/data/prjdata/language",
-		"string_length": 20
+		"data_root": "/mnt/data/prjdata/language"
 	},
 
 	"test_data": {
 		"name": "Language",
 		"shuffle": false,
-		"data_root": "/mnt/data/prjdata/language",
-		"string_length": 20
+		"data_root": "/mnt/data/prjdata/language"
 	},
 
 	"optimizer": {
 		"name": "SGD",
-		"learning_rate": 0.01,
+		"learning_rate": 0.005,
 		"lr_step_epochs": 100,
 		"lr_step_gamma": 0.5,
 		"weight_decay": 1e-4,

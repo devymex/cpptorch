@@ -117,6 +117,17 @@ bool InitModuleWeight(const std::string &strModuleType, NAMED_PARAMS &weights) {
 		CHECK(iBias != weights.end());
 		torch::nn::init::normal_(iWeight->second, 1., 0.02);
 		torch::nn::init::constant_(iBias->second, 0.);
+	} else if (strModuleType == "torch::nn::LSTMImpl") {
+		for (auto &w : weights) {
+			CHECK_GT(w.first.size(), 5);
+			auto strPrefix = w.first.substr(0, 5);
+			if (strPrefix == "bias_") {
+				torch::nn::init::constant_(w.second, 0.);
+			} else {
+				CHECK(strPrefix == "weigh");
+				torch::nn::init::xavier_normal_(w.second);
+			}
+		}
 	} else {
 		return false;
 	}

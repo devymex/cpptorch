@@ -7,6 +7,7 @@ class ClassificationLoss : public BasicLoss {
 public:
 	float Backward(torch::Tensor tOutput, torch::Tensor tTarget) override {
 		uint64_t nBatchSize = tOutput.size(0);
+		CHECK_GT(nBatchSize, 0);
 		torch::Tensor tLoss = tfunc::nll_loss(tOutput, tTarget);
 		float fLoss = tLoss.item().toFloat() * nBatchSize;
 		tLoss.backward();

@@ -65,7 +65,7 @@ protected:
 			strings.push_back(m_Strings[i].first);
 			labels.push_back(m_Strings[i].second);
 			nStrLen = m_nStrLen > 0 ? m_nStrLen:
-					std::max(strings.back().size(), m_nStrLen);
+					std::max(strings.back().size(), nStrLen);
 		}
 		CHECK_GT(nStrLen, 0);
 		uint64_t nCharNum = m_Charset.size();
@@ -73,7 +73,8 @@ protected:
 		for (uint64_t i = 0; i < strings.size(); ++i) {
 			for (uint64_t j = 0; j < strings[i].size(); ++j) {
 				uint64_t nOffset = i * nStrLen * nCharNum + j * nCharNum;
-				dataBuf[nOffset + Char2Index(strings[i][j])] = 1.f;
+				uint64_t nCharIdx = Char2Index(strings[i][j]);
+				dataBuf.at(nOffset + nCharIdx) = 1.f;
 			}
 		}
 		tData = torch::tensor(dataBuf).reshape({(int64_t)nBachSize,
@@ -88,7 +89,6 @@ private:
 	std::vector<std::string> m_Languages;
 	std::array<uint64_t, 256> m_Charset;
 	uint64_t m_nStrLen = 0;
-	bool m_bVarLen = false;
 };
 
 REGISTER_CREATOR(BatchLoader, LanguageLoader, "Language");
