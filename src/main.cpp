@@ -183,13 +183,6 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	// -------------------------------------------------------------------------
 	for (uint64_t nEpoch = 1; nEpoch + nInitEpoch <= argMaxEpoch(); ++nEpoch) {
 		torch::Tensor tData, tTarget;
-		//auto &sgdOption = static_cast<SGDOPTION&>(sgdOptim.defaults());
-		// Train phase
-		// if (argLRStepSize() > 0 && (nEpoch + nInitEpoch) % argLRStepSize() == 0) {
-		// 	uint64_t nSteps = (nEpoch + nInitEpoch) / argLRStepSize();
-		// 	float fDecay = std::pow(argLRStepGamma(), (float)nSteps);
-		// 	sgdOption.lr(argLearningRate() * fDecay);
-		// }
 		pTrainLdr->ResetCursor();
 		pModel->TrainMode(true);
 		float fTrainLossSum = 0.f;
@@ -204,7 +197,7 @@ int main(int nArgCnt, const char *ppArgs[]) {
 				LOG(INFO) << "train_iter=" << nIter << ", loss=" << fLoss;
 			}
 		}
-		pOptimizer->EpochStep();
+		pOptimizer->EpochStep(nEpoch + nInitEpoch);
 
 		// Test phase
 		pTestLdr->ResetCursor();

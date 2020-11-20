@@ -5,7 +5,7 @@
 
 class SGDOptimizer : public BasicOptimizer {
 public:
-	SGDOptimizer() : m_DefaultOpt(0.) {
+	SGDOptimizer() : m_DefaultOpt(0.f) {
 	}
 
 	void Initialize(const nlohmann::json &jConf) {
@@ -18,7 +18,10 @@ public:
 		Arg<float> argLRStepGamma("lr_step_gamma", 0.f, argMan);
 		ParseArgsFromJson(jConf, argMan);
 
-		m_DefaultOpt = torch::optim::SGDOptions(argLearningRate())
+		m_fInitLR = argLearningRate();
+		m_nLRStepSize = argLRStepSize();
+		m_fLRStepGamma = argLRStepGamma();
+		m_DefaultOpt = torch::optim::SGDOptions(m_fInitLR)
 			.weight_decay(argWeightDecay())
 			.momentum(argMomentum());
 	}
@@ -48,9 +51,16 @@ public:
 		m_pSGD->step();
 	}
 
-	void EpochStep() override {
+	void EpochStep(uint64_t nEpoch) override {
+		uint64_t nSteps = nEpoch / m_nLRStepSize;
+		float fDecay = std::pow(m_fLRStepGamma, (float)nSteps);
+		static_cast<torch::optim::SGDOptions&>(m_pSGD->defaults())
+				.lr(m_fInitLR * fDecay);
 	}
 private:
+	float m_fInitLR = 0.f;
+	uint64_t m_nLRStepSize = 0;
+	float m_fLRStepGamma = 0.f;
 	torch::optim::SGDOptions m_DefaultOpt;
 	std::unique_ptr<torch::optim::SGD> m_pSGD;
 };

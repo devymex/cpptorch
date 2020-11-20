@@ -7,5 +7,5 @@ public:
 	virtual void SetModel(BasicModel &model) = 0;
 	virtual void ZeroGrad() = 0;
 	virtual void IterStep() = 0;
-	virtual void EpochStep() = 0;
+	virtual void EpochStep(uint64_t nEpoch) = 0;
 };
