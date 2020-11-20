@@ -17,13 +17,17 @@ NAMED_PARAMS BasicModel::NamedParameters() const {
 	return namedParams;
 }
 
+PARAM_OPTION BasicModel::GetParamOption(const std::string &strParamName) const {
+	return PARAM_OPTION();
+}
+
 void BasicModel::InitWeights(WEIGHT_INIT_PROC InitProc) {
-	for (auto &submod : modules()) {
+	for (const auto &pSubMod: children()) {
 		NAMED_PARAMS namedParams;
-		for (auto &params: submod->named_parameters()) {
+		for (auto &params: pSubMod->named_parameters()) {
 			namedParams[params.key()] = params.value();
 		}
-		if (!InitProc(submod->name(), namedParams)) {
+		if (!InitProc(pSubMod->name(), namedParams)) {
 			for (const auto &param: namedParams) {
 				LOG(INFO) << "Unintialized parameter: " << param.first;
 			}
@@ -33,12 +37,12 @@ void BasicModel::InitWeights(WEIGHT_INIT_PROC InitProc) {
 
 void BasicModel::LoadWeights(const std::string &strFilename) {
 	auto loadedParams = ::LoadWeights(strFilename);
-	for (auto &param: NamedParameters()) {
-		auto iLoaded = loadedParams.find(param.first);
+	for (const auto &param: named_parameters()) {
+		auto iLoaded = loadedParams.find(param.key());
 		if (iLoaded != loadedParams.end()) {
-			param.second.set_data(iLoaded->second);
+			param.value().set_data(iLoaded->second);
 		} else {
-			LOG(INFO) << "Unintialized parameter: " << param.first;
+			LOG(INFO) << "Unintialized parameter: " << param.key();
 		}
 	}
 }

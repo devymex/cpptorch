@@ -7,7 +7,9 @@
 	"model": {
 		"name": "RNN",
 		"charset_size": 256,
-		"categories": 18
+		"categories": 18,
+		"hidden_size": 128,
+		"string_length": 20
 	},
 	"loss": {
 		"name": "Classification"
@@ -15,22 +17,28 @@
 	"train_data": {
 		"name": "Language",
 		"shuffle": true,
-		"data_root": "/mnt/data/prjdata/language"
+		"data_root": "/mnt/data/prjdata/language",
+		"string_length": 20
 	},
 
 	"test_data": {
 		"name": "Language",
 		"shuffle": false,
-		"data_root": "/mnt/data/prjdata/language"
+		"data_root": "/mnt/data/prjdata/language",
+		"string_length": 20
+	},
+
+	"optimizer": {
+		"name": "SGD",
+		"learning_rate": 0.01,
+		"lr_step_epochs": 100,
+		"lr_step_gamma": 0.5,
+		"weight_decay": 1e-4,
+		"momentum": 0.9
 	},
 
 	"max_epoch": 500,
 	"batch_size": 32,
-	"learning_rate": 0.01,
-	"lr_step_epochs": 100,
-	"lr_step_gamma": 0.5,
-	"weight_decay": 1e-4,
-	"momentum": 0.9,
 
 	"save_state_epochs": 100,
 	"state_path": "experiments/states",

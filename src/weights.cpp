@@ -100,19 +100,19 @@ void Test() {
 bool InitModuleWeight(const std::string &strModuleType, NAMED_PARAMS &weights) {
 	auto iWeight = weights.find("weight");
 	auto iBias = weights.find("bias");
-	if (strModuleType == "Conv2d") {
+	if (strModuleType == "torch::nn::Conv2dImpl") {
 		CHECK(iWeight != weights.end());
 		torch::nn::init::xavier_normal_(iWeight->second);
 		if (iBias != weights.end()) {
 			torch::nn::init::normal_(iBias->second);
 		}
-	} else if (strModuleType == "Linear") {
+	} else if (strModuleType == "torch::nn::LinearImpl") {
 		CHECK(iWeight != weights.end());
 		torch::nn::init::xavier_normal_(iWeight->second);
 		if (iBias != weights.end()) {
 			torch::nn::init::normal_(iBias->second);
 		}
-	} else if (strModuleType == "BatchNorm2d") {
+	} else if (strModuleType == "torch::nn::BatchNorm2dImpl") {
 		CHECK(iWeight != weights.end());
 		CHECK(iBias != weights.end());
 		torch::nn::init::normal_(iWeight->second, 1., 0.02);

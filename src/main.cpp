@@ -13,8 +13,9 @@
 #include "json.hpp"
 #include "creator.hpp"
 #include "data_loaders/batch_loader.hpp"
-#include "models/basic_model.hpp"
 #include "loss_functions/basic_loss.hpp"
+#include "optimizers/basic_optimizer.hpp"
+#include "models/basic_model.hpp"
 
 namespace bfs = boost::filesystem;
 namespace tfunc = torch::nn::functional;
@@ -75,20 +76,16 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	Arg<int32_t> argRandomSeed("random_seed", -1);
 	Arg<uint64_t> argMaxEpoch("max_epoch", 10);
 	Arg<uint64_t> argBatchSize("batch_size", 32);
-	Arg<float> argLearningRate("learning_rate", 0.01f);
-	Arg<uint64_t> argLRStepSize("lr_step_epochs", 0);
-	Arg<float> argLRStepGamma("lr_step_gamma", 0.f);
-	Arg<float> argWeightDecay("weight_decay", 0.f);
-	Arg<float> argMomentum("momentum", 0.f);
 	Arg<std::string> argLogPath("log_path");
 	Arg<uint64_t> argLogIters("log_iters", 0);
 	Arg<std::string> argStatePath("state_path");
 	Arg<uint64_t> argStateSaveEpochs("save_state_epochs", 0);
 	Arg<bool> argLoadLast("load_last", false);
-	Arg<nlohmann::json> argModel("model");
-	Arg<nlohmann::json> argLoss("loss");
 	Arg<nlohmann::json> argTrainData("train_data");
 	Arg<nlohmann::json> argTestData("test_data");
+	Arg<nlohmann::json> argOptimizer("optimizer");
+	Arg<nlohmann::json> argLoss("loss");
+	Arg<nlohmann::json> argModel("model");
 
 	// Configure Parsing and Arguments Checking
 	// -------------------------------------------------------------------------
@@ -162,6 +159,7 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	uint64_t nInitEpoch = 0;
 	auto pModel = Creator<BasicModel>::Create(argModel());
 	pModel->SetDevice(device);
+	pModel->InitWeights(InitModuleWeight);
 	if (argLoadLast()) {
 		auto lastState = FindLastState(argStatePath(), argConfName());
 		nInitEpoch = lastState.first;
@@ -178,50 +176,36 @@ int main(int nArgCnt, const char *ppArgs[]) {
 
 	// Optimizer Initialization
 	// -------------------------------------------------------------------------
-	std::vector<torch::Tensor> parameters;
-	for (const auto &pair : pModel->NamedParameters()) {
-		parameters.push_back(pair.second);
-	}
-	float fLearningRate = argLearningRate();
-	if (argLRStepSize() > 0) {
-		uint64_t nSteps = nInitEpoch / argLRStepSize();
-		fLearningRate *= std::pow(argLRStepGamma(), (float)nSteps);
-	}
-	using SGDOPTION = torch::optim::SGDOptions;
-	torch::optim::SGD sgdOptim(parameters, SGDOPTION(fLearningRate)
-			.weight_decay(argWeightDecay())
-			.momentum(argMomentum()));
-	// torch::Tensor tData, tTarget;
-	// for (uint64_t nIter = 1; pTrainLdr->GetBatch(
-	// 		argBatchSize(), device, tData, tTarget); ++nIter) {
-	// 	LOG(INFO) << nIter;
-	// }
+	auto pOptimizer = Creator<BasicOptimizer>::Create(argOptimizer());
+	pOptimizer->SetModel(*pModel);
 
 	// Main Loop
 	// -------------------------------------------------------------------------
 	for (uint64_t nEpoch = 1; nEpoch + nInitEpoch <= argMaxEpoch(); ++nEpoch) {
 		torch::Tensor tData, tTarget;
-		auto &sgdOption = static_cast<SGDOPTION&>(sgdOptim.defaults());
+		//auto &sgdOption = static_cast<SGDOPTION&>(sgdOptim.defaults());
 		// Train phase
-		if (argLRStepSize() > 0 && (nEpoch + nInitEpoch) % argLRStepSize() == 0) {
-			uint64_t nSteps = (nEpoch + nInitEpoch) / argLRStepSize();
-			float fDecay = std::pow(argLRStepGamma(), (float)nSteps);
-			sgdOption.lr(argLearningRate() * fDecay);
-		}
+		// if (argLRStepSize() > 0 && (nEpoch + nInitEpoch) % argLRStepSize() == 0) {
+		// 	uint64_t nSteps = (nEpoch + nInitEpoch) / argLRStepSize();
+		// 	float fDecay = std::pow(argLRStepGamma(), (float)nSteps);
+		// 	sgdOption.lr(argLearningRate() * fDecay);
+		// }
 		pTrainLdr->ResetCursor();
 		pModel->TrainMode(true);
 		float fTrainLossSum = 0.f;
 		for (uint64_t nIter = 1; bTrainMode && pTrainLdr->GetBatch(
 				argBatchSize(), device, tData, tTarget); ++nIter) {
-			sgdOptim.zero_grad();
+			pOptimizer->ZeroGrad();
 			torch::Tensor tOutput = pModel->Forward({tData});
 			float fLoss = pLoss->Backward(tOutput, tTarget);
 			fTrainLossSum += fLoss;
-			sgdOptim.step();
+			pOptimizer->IterStep();
 			if (argLogIters() > 0 && nIter % argLogIters() == 0) {
 				LOG(INFO) << "train_iter=" << nIter << ", loss=" << fLoss;
 			}
 		}
+		pOptimizer->EpochStep();
+
 		// Test phase
 		pTestLdr->ResetCursor();
 		pModel->TrainMode(false);
@@ -249,8 +233,7 @@ int main(int nArgCnt, const char *ppArgs[]) {
 				: std::to_string(fTrainLossSum / pTrainLdr->Size());
 		std::string strEpoch = !bTrainMode ? "TEST"
 				: std::to_string(nEpoch + nInitEpoch);
-		LOG(INFO) << "epoch " << strEpoch << ": lr=" << sgdOption.lr()
-				  << ", train=" << strTrainLoss
+		LOG(INFO) << "epoch " << strEpoch << ": train=" << strTrainLoss
 				  << ", test=" << fTestLossSum / pTestLdr->Size()
 		 		  << ", result: " << pLoss->FlushResults();
 

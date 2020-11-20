@@ -19,12 +19,14 @@ public:
 
 		ArgMan argMan;
 		Arg<std::string> argDataRoot("data_root", argMan);
+		Arg<uint64_t> argStrLen("string_length", 0, argMan);
 		ParseArgsFromJson(jConf, argMan);
 
+		m_nStrLen = argStrLen();
 		bfs::path dataPath = bfs::path(argDataRoot()) / bfs::path("names");
 		CHECK(bfs::is_directory(dataPath));
-		
 		std::fill(m_Charset.begin(), m_Charset.end(), 0);
+		uint64_t nMaxLen = 0;
 		for (auto &strFilename : EnumerateFiles(dataPath.string(), ".*\\.txt")) {
 			std::string strFileContent;
 			CHECK(LoadFileContent(strFilename, strFileContent));
@@ -33,9 +35,11 @@ public:
 				m_Strings.emplace_back(strLine, (int64_t)m_Languages.size());
 				std::for_each(strLine.begin(), strLine.end(), 
 					[&](char c){m_Charset[Char2Index(c)] = 1;});
+				nMaxLen = std::max(strLine.size(), nMaxLen);
 			}
 			m_Languages.emplace_back(bfs::path(strFilename).stem().string());
 		}
+		LOG(INFO) << "nMaxLen=" << nMaxLen;
 		uint64_t nCharCnt = 0;
 		for (auto &c : m_Charset) {
 			if (c == 1) {
@@ -60,12 +64,10 @@ protected:
 		for (auto i: indices) {
 			strings.push_back(m_Strings[i].first);
 			labels.push_back(m_Strings[i].second);
-			if (strings.back().size() > nStrLen) {
-				nStrLen = strings.back().size();
-			}
+			nStrLen = m_nStrLen > 0 ? m_nStrLen:
+					std::max(strings.back().size(), m_nStrLen);
 		}
 		CHECK_GT(nStrLen, 0);
-
 		uint64_t nCharNum = m_Charset.size();
 		std::vector<float> dataBuf(nBachSize * nStrLen * nCharNum, 0.f);
 		for (uint64_t i = 0; i < strings.size(); ++i) {
@@ -85,6 +87,8 @@ private:
 	std::vector<std::pair<std::string, int64_t>> m_Strings;
 	std::vector<std::string> m_Languages;
 	std::array<uint64_t, 256> m_Charset;
+	uint64_t m_nStrLen = 0;
+	bool m_bVarLen = false;
 };
 
 REGISTER_CREATOR(BatchLoader, LanguageLoader, "Language");

@@ -8,15 +8,28 @@
 
 using NAMED_PARAMS = std::map<std::string, torch::Tensor>;
 
+using TENSOR_ARY = std::vector<torch::Tensor>;
+
 using WEIGHT_INIT_PROC = std::function<bool(const std::string&, NAMED_PARAMS&)>;
 
-class BasicModel : protected torch::nn::Module {
+struct PARAM_OPTION{
+	float fLRFactor = 1.f;
+	float fWDFactor = 1.f;
+	bool operator < (const PARAM_OPTION &b) const {
+		return (b.fLRFactor == fLRFactor && b.fWDFactor < fWDFactor) || 
+				(b.fLRFactor == fLRFactor);
+	}
+};
+
+class BasicModel : public torch::nn::Module {
 public:
 	BasicModel() = default;
 
 	virtual void Initialize(const nlohmann::json &jConf) = 0;
 
-	virtual torch::Tensor Forward(std::vector<torch::Tensor> inputs) = 0;
+	virtual torch::Tensor Forward(TENSOR_ARY inputs) = 0;
+
+	virtual PARAM_OPTION GetParamOption(const std::string &strParamName) const;
 
 	virtual void TrainMode(bool bTrain = true);
 
