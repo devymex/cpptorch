@@ -12,7 +12,7 @@
 
 namespace bfs = boost::filesystem;
 using namespace std::placeholders;
-class LanguageLoader : public BatchLoader {
+class NameLangLoader : public BatchLoader {
 public:
 	void Initialize(const nlohmann::json &jConf) override {
 		BatchLoader::Initialize(jConf);
@@ -23,11 +23,10 @@ public:
 		ParseArgsFromJson(jConf, argMan);
 
 		m_nStrLen = argStrLen();
-		bfs::path dataPath = bfs::path(argDataRoot()) / bfs::path("names");
-		CHECK(bfs::is_directory(dataPath));
+		CHECK(bfs::is_directory(argDataRoot())) << argDataRoot();
 		std::fill(m_Charset.begin(), m_Charset.end(), 0);
 		uint64_t nMaxLen = 0;
-		for (auto &strFilename : EnumerateFiles(dataPath.string(), ".*\\.txt")) {
+		for (auto &strFilename : EnumerateFiles(argDataRoot(), ".*\\.txt")) {
 			std::string strFileContent;
 			CHECK(LoadFileContent(strFilename, strFileContent));
 			std::istringstream iss(strFileContent);
@@ -91,4 +90,4 @@ private:
 	uint64_t m_nStrLen = 0;
 };
 
-REGISTER_CREATOR(BatchLoader, LanguageLoader, "Language");
+REGISTER_CREATOR(BatchLoader, NameLangLoader, "NameLang");

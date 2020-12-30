@@ -8,7 +8,7 @@ SET(CMAKE_CXX_EXTENSIONS OFF)
 FIND_PACKAGE(CUDA REQUIRED)
 FIND_PACKAGE(Boost REQUIRED COMPONENTS filesystem system regex)
 FIND_PACKAGE(OpenMP REQUIRED)
-FIND_PACKAGE(OpenCV REQUIRED core imgcodecs imgproc highgui flann freetype)
+FIND_PACKAGE(OpenCV REQUIRED core imgcodecs imgproc highgui flann)
 FIND_PACKAGE(Torch REQUIRED PATHS "/opt/libtorch/share/cmake/Torch")
 
 FILE(GLOB_RECURSE SRC_FILES "${CMAKE_SOURCE_DIR}/src/*.cpp")

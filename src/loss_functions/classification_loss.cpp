@@ -13,6 +13,7 @@ public:
 		tLoss.backward();
 		return fLoss;
 	}
+
 	float Evaluate(torch::Tensor tOutput, torch::Tensor tTarget) override {
 		uint64_t nBatchSize = tOutput.size(0);
 		uint64_t nClassNum = tOutput.size(1);
@@ -44,6 +45,5 @@ private:
 	int64_t m_nTotalCnt = 0;
 	std::vector<float> m_Results;
 };
-
 
 REGISTER_CREATOR(BasicLoss, ClassificationLoss, "Classification");

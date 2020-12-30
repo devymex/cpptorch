@@ -14,15 +14,15 @@
 		"name": "Classification"
 	},
 	"train_data": {
-		"name": "Language",
+		"name": "EngFraLang",
 		"shuffle": true,
-		"data_root": "/mnt/data/prjdata/language"
+		"data_file": "/mnt/data/prjdata/language/eng-fra.txt"
 	},
 
 	"test_data": {
-		"name": "Language",
+		"name": "EngFraLang",
 		"shuffle": false,
-		"data_root": "/mnt/data/prjdata/language"
+		"data_root": "/mnt/data/prjdata/language/eng-fra.txt"
 	},
 
 	"optimizer": {
@@ -40,6 +40,6 @@
 	"save_state_epochs": 100,
 	"state_path": "experiments/states",
 	"load_last": false,
-	"log_path": "experiments/log",
+	"log_path.ignore": "experiments/log",
 	"log_iters": 0
 }

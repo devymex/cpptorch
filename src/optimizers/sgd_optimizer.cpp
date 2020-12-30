@@ -9,7 +9,6 @@ public:
 	}
 
 	void Initialize(const nlohmann::json &jConf) {
-		LOG(INFO) << jConf.dump(4);
 		ArgMan argMan;
 		Arg<float> argLearningRate("learning_rate", 0.01f, argMan);
 		Arg<float> argWeightDecay("weight_decay", 0.f, argMan);
