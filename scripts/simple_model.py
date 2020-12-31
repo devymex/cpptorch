@@ -13,6 +13,6 @@ class Model(nn.Module):
 		x = F.relu(F.max_pool2d(self.conv2(x), 2))
 		x = x.view(-1, 320)
 		x = F.relu(self.fc1(x))
-		x = F.relu(self.fc2(x))
+		x = self.fc2(x)
 		x = F.softmax(x, 1)
 		return x.log()
