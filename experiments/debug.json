@@ -5,8 +5,8 @@
 	"device_id": 0,
 
 	"model": {
-		"name": "RNN",
-		"charset_size": 256,
+		"name": "JIT",
+		"model_filename": "experiments/states/simplenet_i10.pth",
 		"categories": 18,
 		"hidden_size": 128
 	},
@@ -14,20 +14,20 @@
 		"name": "Classification"
 	},
 	"train_data": {
-		"name": "EngFraLang",
+		"name": "MNIST",
 		"shuffle": true,
-		"data_file": "/mnt/data/prjdata/language/eng-fra.txt"
+		"data_root": "/mnt/data/prjdata/mnist/"
 	},
 
 	"test_data": {
-		"name": "EngFraLang",
+		"name": "MNIST",
 		"shuffle": false,
-		"data_root": "/mnt/data/prjdata/language/eng-fra.txt"
+		"data_root": "/mnt/data/prjdata/mnist/"
 	},
 
 	"optimizer": {
 		"name": "SGD",
-		"learning_rate": 0.005,
+		"learning_rate": 0.01,
 		"lr_step_epochs": 100,
 		"lr_step_gamma": 0.5,
 		"weight_decay": 1e-4,
@@ -37,7 +37,7 @@
 	"max_epoch": 500,
 	"batch_size": 32,
 
-	"save_state_epochs": 100,
+	"save_state_epochs": 10,
 	"state_path": "experiments/states",
 	"load_last": false,
 	"log_path.ignore": "experiments/log",

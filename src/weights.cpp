@@ -100,31 +100,31 @@ void Test() {
 bool InitModuleWeight(const std::string &strModuleType, NAMED_PARAMS &weights) {
 	auto iWeight = weights.find("weight");
 	auto iBias = weights.find("bias");
-	if (strModuleType == "torch::nn::Conv2dImpl") {
+	if (strModuleType.find("Conv2d") != std::string::npos) {
 		CHECK(iWeight != weights.end());
 		torch::nn::init::xavier_normal_(iWeight->second);
 		if (iBias != weights.end()) {
 			torch::nn::init::normal_(iBias->second);
 		}
-	} else if (strModuleType == "torch::nn::LinearImpl") {
+	} else if (strModuleType.find("Linear") != std::string::npos) {
 		CHECK(iWeight != weights.end());
 		torch::nn::init::xavier_normal_(iWeight->second);
 		if (iBias != weights.end()) {
 			torch::nn::init::normal_(iBias->second);
 		}
-	} else if (strModuleType == "torch::nn::BatchNorm2dImpl") {
+	} else if (strModuleType.find("BatchNorm2d") != std::string::npos) {
 		CHECK(iWeight != weights.end());
 		CHECK(iBias != weights.end());
 		torch::nn::init::normal_(iWeight->second, 1., 0.02);
 		torch::nn::init::constant_(iBias->second, 0.);
-	} else if (strModuleType == "torch::nn::LSTMImpl") {
+	} else if (strModuleType.find("LSTM") != std::string::npos) {
 		for (auto &w : weights) {
 			CHECK_GT(w.first.size(), 5);
 			auto strPrefix = w.first.substr(0, 5);
 			if (strPrefix == "bias_") {
 				torch::nn::init::constant_(w.second, 0.);
 			} else {
-				CHECK(strPrefix == "weigh");
+				CHECK(strPrefix == "weight");
 				torch::nn::init::xavier_normal_(w.second);
 			}
 		}

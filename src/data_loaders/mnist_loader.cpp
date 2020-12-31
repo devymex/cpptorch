@@ -35,11 +35,16 @@ protected:
 		for (uint64_t i = 0; i < indices.size(); ++i) {
 			CHECK_LT(indices[i], Size());
 			auto sample = m_pMNIST->get(indices[i]);
+			if (sample.data.dim() == 3) {
+				auto shape = sample.data.sizes().vec();
+				shape.insert(shape.begin(), 1);
+				sample.data = sample.data.reshape(shape);
+			}
 			if (sample.target.dim() == 0) {
 				sample.target = sample.target.reshape({1});
 			}
-			dataAry.emplace_back(sample.data);
-			targetAry.emplace_back(sample.target);
+			dataAry.emplace_back(std::move(sample.data));
+			targetAry.emplace_back(std::move(sample.target));
 		}
 		tData = torch::cat(dataAry);
 		tTarget = torch::cat(targetAry);

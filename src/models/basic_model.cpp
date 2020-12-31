@@ -37,12 +37,12 @@ void BasicModel::InitWeights(WEIGHT_INIT_PROC InitProc) {
 
 void BasicModel::LoadWeights(const std::string &strFilename) {
 	auto loadedParams = ::LoadWeights(strFilename);
-	for (const auto &param: named_parameters()) {
-		auto iLoaded = loadedParams.find(param.key());
+	for (const auto &param: NamedParameters()) {
+		auto iLoaded = loadedParams.find(param.first);
 		if (iLoaded != loadedParams.end()) {
-			param.value().set_data(iLoaded->second);
+			param.second.set_data(iLoaded->second);
 		} else {
-			LOG(INFO) << "Unintialized parameter: " << param.key();
+			LOG(INFO) << "Unintialized parameter: " << param.first;
 		}
 	}
 }
@@ -50,4 +50,3 @@ void BasicModel::LoadWeights(const std::string &strFilename) {
 void BasicModel::SaveWeights(const std::string &strFilename) const {
 	::SaveWeights(NamedParameters(), strFilename);
 }
-

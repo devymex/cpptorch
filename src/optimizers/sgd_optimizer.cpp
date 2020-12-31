@@ -27,9 +27,9 @@ public:
 
 	void SetModel(BasicModel &model) override {
 		std::map<PARAM_OPTION, std::vector<torch::Tensor>> optionParams;
-		for (const auto &param : model.named_parameters()) {
-			PARAM_OPTION opt = model.GetParamOption(param.key());
-			optionParams[opt].emplace_back(param.value());
+		for (const auto &param : model.NamedParameters()) {
+			PARAM_OPTION opt = model.GetParamOption(param.first);
+			optionParams[opt].emplace_back(param.second);
 		}
 		std::vector<torch::optim::OptimizerParamGroup> optimizeGroups;
 		for (auto &group : optionParams) {

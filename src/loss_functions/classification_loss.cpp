@@ -23,7 +23,7 @@ public:
 		auto tSum = tOutput.argmax(1).eq(tTarget).sum();
 		m_nCorrectCnt += tSum.item().toLong();
 		m_nTotalCnt += nBatchSize;
-	
+
 		auto tProb = tOutput.to(torch::kCPU);
 		for (uint64_t i = 0; i < nBatchSize; ++i) {
 			float *pSoftmax = tProb[i].data_ptr<float>();

@@ -38,8 +38,8 @@ void Parser(const nlohmann::json &jValue, int32_t &val) {
 
 template<>
 void Parser(const nlohmann::json &jValue, float &val) {
-	CHECK(jValue.is_number_float());
-		val = jValue.get<float>();
+	CHECK(jValue.is_number());
+	val = jValue.get<float>();
 }
 
 template<>
