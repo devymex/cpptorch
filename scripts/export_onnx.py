@@ -26,10 +26,9 @@ def load_weights(model):
 			param.copy_(loaded_params[name])
 
 
-model = torch.load(args.script_model[0])
+model = torch.jit.load(args.script_model[0])
 model.train(False)
 load_weights(model)
-exit()
 
 example_input = torch.randn(args.input_shape)
 script_model = torch.jit.trace(model, example_input)

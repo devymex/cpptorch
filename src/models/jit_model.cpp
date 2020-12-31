@@ -57,12 +57,7 @@ public:
 			}
 		}
 	}
-	void SaveWeights(const std::string &strFilename) const override {
-		BasicModel::SaveWeights(strFilename);
-		auto cloned = m_JitModule.clone();
-		cloned.to(torch::kCPU);
-		cloned.save("experiments/states/simplenet_i10.pth");
-	}
+
 private:
 	torch::jit::Module m_JitModule;
 	bool m_bReinit = false;

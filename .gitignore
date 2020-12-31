@@ -12,3 +12,4 @@ build/
 *.pkl
 *.pkl.*
 *.pth
+*.onnx
