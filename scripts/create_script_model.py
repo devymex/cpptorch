@@ -1,7 +1,9 @@
-import torch
-import torch.nn as nn
-import torch.nn.init as init
-import torch.nn.functional as F
+import sys, importlib
+import torch, torch.nn as nn, torch.nn.init as init
+
+assert(len(sys.argv) > 2)
+user_model = importlib.import_module(sys.argv[1])
+output_filename = sys.argv[2]
 
 def init_weight(m):
 	if isinstance(m, nn.Conv1d):
@@ -65,34 +67,13 @@ def init_weight(m):
 			else:
 				init.normal_(param.data)
 
-def init_weights(model, url):
-	loaded_params = load_state_dict_from_url(url, progress=True)
-	model.apply(init_weight)
-	for name, param in model.named_parameters():
-		if name in loaded_params:
-			if loaded_params[name].size() == param.data.size():
-				param.data.copy_(loaded_params[name].data)
-	return torch.jit.script(model)
-
-
-class SimpleNet(nn.Module):
-	def __init__(self):
-		super(SimpleNet, self).__init__()
-		self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
-		self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-		self.fc1 = nn.Linear(320, 64)
-		self.fc2 = nn.Linear(64, 10)
-
-	def forward(self, x):
-		x = F.relu(F.max_pool2d(self.conv1(x), 2))
-		x = F.relu(F.max_pool2d(self.conv2(x), 2))
-		x = x.view(-1, 320)
-		x = F.relu(self.fc1(x))
-		x = F.dropout(x, training=self.training)
-		x = F.relu(self.fc2(x))
-		return F.log_softmax(x, 1)
-
-model = SimpleNet()
+model = user_model.Model()
 model.apply(init_weight)
+model.eval()
+
 model = torch.jit.script(model)
-model.save("experiments/states/simplenet.pth")
+torch.jit.save(model, output_filename)
+#model.save(output_filename)
+
+for name, tensor in model.named_parameters():
+	print(name)

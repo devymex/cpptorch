@@ -24,6 +24,13 @@
 					"ignoreFailures": true
 				}
 			]
+		},
+		{
+			"name": "Python: Current File",
+			"type": "python",
+			"request": "launch",
+			"program": "${file}",
+			"console": "integratedTerminal"
 		}
 	]
 }

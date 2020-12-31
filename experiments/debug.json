@@ -2,13 +2,12 @@
 	"brief": "调试",
 
 	"device": "GPU",
-	"device_id": 0,
+	"device_id": 1,
 
 	"model": {
 		"name": "JIT",
-		"model_filename": "experiments/states/simplenet_i10.pth",
-		"categories": 18,
-		"hidden_size": 128
+		"model_filename": "experiments/states/simplenet.pth",
+		"reinitialize": true
 	},
 	"loss": {
 		"name": "Classification"

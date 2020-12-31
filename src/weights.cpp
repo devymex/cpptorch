@@ -34,16 +34,16 @@ uint8_t Num2HexChar(uint8_t n) {
 }
 
 uint8_t HexWord2Num(uint16_t c) {
-	uint8_t hi = HexChar2Num((uint8_t)(c >> 8));
-	uint8_t lo = HexChar2Num((uint8_t)(c & 0xFF));
+	uint8_t lo = HexChar2Num((uint8_t)(c >> 8));
+	uint8_t hi = HexChar2Num((uint8_t)(c & 0xFF));
 	CHECK_NE(hi, 0xFF);
 	CHECK_NE(lo, 0xFF);
 	return (hi << 4) | lo;
 }
 
 uint16_t Num2HexWord(uint8_t n) {
-	uint8_t hi = Num2HexChar((uint8_t)(n >> 4));
-	uint8_t lo = Num2HexChar((uint8_t)(n & 0xF));
+	uint8_t lo = Num2HexChar((uint8_t)(n >> 4));
+	uint8_t hi = Num2HexChar((uint8_t)(n & 0xF));
 	return (uint16_t(hi << 8) | uint16_t(lo));
 }
 
