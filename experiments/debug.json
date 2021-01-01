@@ -15,13 +15,13 @@
 	"train_data": {
 		"name": "MNIST",
 		"shuffle": true,
-		"data_root": "/mnt/data/prjdata/mnist/"
+		"data_root": "/mnt/data/prjdata/MNIST/raw"
 	},
 
 	"test_data": {
 		"name": "MNIST",
 		"shuffle": false,
-		"data_root": "/mnt/data/prjdata/mnist/"
+		"data_root": "/mnt/data/prjdata/MNIST/raw"
 	},
 
 	"optimizer": {
