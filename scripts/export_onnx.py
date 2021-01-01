@@ -1,5 +1,4 @@
-import io, importlib, argparse
-import torch, torch.nn as nn, torch.nn.functional as F
+import io, argparse, torch, onnx
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--script_model', nargs=1, required=True, type=str,
@@ -25,21 +24,24 @@ def load_weights(model):
 		if name in loaded_params:
 			param.copy_(loaded_params[name])
 
-
 model = torch.jit.load(args.script_model[0])
 model.train(False)
 load_weights(model)
 
 example_input = torch.randn(args.input_shape)
-script_model = torch.jit.trace(model, example_input)
-example_output = script_model.forward(example_input)
+model = torch.jit.trace(model, example_input)
+example_output = model.forward(example_input)
 
 torch.onnx.export(model,
 	example_input,
 	args.onnx_file[0],
-	verbose = True,
-	output_names = ['output'],
+	verbose = False,
+	input_names = ['image', 'fc2.bias', 'fc2.weight', 'fc1.bias', 'fc1.weight', 'conv2.bias', 'conv2.weight', 'conv1.bias', 'conv1.weight'],
+	output_names = ['predict'],
 	example_outputs = example_output
 	)
 
-print('Exported to ONNX')
+model = onnx.load(args.onnx_file[0])
+onnx.checker.check_model(model)
+print(onnx.helper.printable_graph(model.graph))
+print('Done!')

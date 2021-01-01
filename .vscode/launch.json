@@ -26,10 +26,14 @@
 			]
 		},
 		{
-			"name": "Python: Current File",
+			"name": "Python: export_onnx.py",
 			"type": "python",
 			"request": "launch",
-			"program": "${file}",
+			"program": "scripts/export_onnx.py",
+			"args": ["--script_model", "experiments/states/simplenet.pth",
+					 "--onnx_file", "experiments/states/simplenet.onnx",
+					 "--weight_file", "experiments/states/debug_e5.pkl.210101125900",
+					 "--input_shape", "1", "1", "28", "28"],
 			"console": "integratedTerminal"
 		}
 	]

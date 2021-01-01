@@ -6,7 +6,7 @@
 
 	"model": {
 		"name": "JIT",
-		"model_filename": "experiments/states/simplenet.pth",
+		"model_filename": "experiments/states/simplenet_s.pth",
 		"reinitialize": true
 	},
 	"loss": {
@@ -33,10 +33,10 @@
 		"momentum": 0.9
 	},
 
-	"max_epoch": 500,
+	"max_epoch": 5,
 	"batch_size": 32,
 
-	"save_state_epochs": 10,
+	"save_state_epochs": 5,
 	"state_path": "experiments/states",
 	"load_last": false,
 	"log_path.ignore": "experiments/log",

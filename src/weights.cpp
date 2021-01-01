@@ -72,7 +72,11 @@ void SaveWeights(const NAMED_PARAMS &weights, const std::string &strFilename) {
 	CHECK(outFile.is_open());
 	for (const auto &param : weights) {
 		outFile << param.first << " ";
-		auto tensorBytes = torch::pickle_save(param.second);
+		auto tensor = param.second;
+		if (!tensor.device().is_cpu()) {
+			tensor = tensor.to(torch::kCPU);
+		}
+		auto tensorBytes = torch::pickle_save(tensor);
 		for (auto b: tensorBytes) {
 			uint16_t hex = Num2HexWord(b);
 			outFile << ((char*)(&hex))[0] << ((char*)(&hex))[1];

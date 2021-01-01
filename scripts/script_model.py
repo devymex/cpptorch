@@ -1,9 +1,16 @@
-import sys, importlib
+import argparse, importlib
 import torch, torch.nn as nn, torch.nn.init as init
 
-assert(len(sys.argv) > 2)
-user_model = importlib.import_module(sys.argv[1])
-output_filename = sys.argv[2]
+parser = argparse.ArgumentParser()
+parser.add_argument('--model_name', nargs=1, required=True, type=str,
+					help='Definition script of your Pytorch model')
+parser.add_argument('--script_model', nargs=1, required=True, type=str,
+					help='Output filename of script model')
+parser.add_argument('--trace_input', nargs='+', required=False, type=int,
+					help='Tracing or Scripting')
+args = parser.parse_args()
+
+user_model = importlib.import_module(args.model_name[0])
 
 def init_weight(m):
 	if isinstance(m, nn.Conv1d):
@@ -71,9 +78,15 @@ model = user_model.Model()
 model.apply(init_weight)
 model.eval()
 
-model = torch.jit.script(model)
-torch.jit.save(model, output_filename)
-#model.save(output_filename)
+if args.trace_input:
+	example_input = torch.randn(args.trace_input)
+	model = torch.jit.trace(model, example_input)
+else:
+	model = torch.jit.script(model)
 
 for name, tensor in model.named_parameters():
-	print(name)
+	print('{}: {}'.format(name, tensor.shape))
+
+torch.jit.save(model, args.script_model[0])
+
+print('Done!')
