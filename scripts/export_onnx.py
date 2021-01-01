@@ -18,18 +18,18 @@ def load_weights(model):
 	for line in lines:
 		name, data = line.split(' ')
 		tensor = torch.load(io.BytesIO(bytes.fromhex(data)))
-		loaded_params[name] = tensor
+		loaded_params[name] = tensor.cpu()
 	for name, param in model.named_parameters():
 		param.requires_grad = False
 		if name in loaded_params:
 			param.copy_(loaded_params[name])
 
 model = torch.jit.load(args.script_model[0])
+model.cpu()
 model.train(False)
 load_weights(model)
 
 example_input = torch.randn(args.input_shape)
-model = torch.jit.trace(model, example_input)
 example_output = model.forward(example_input)
 
 torch.onnx.export(model,
