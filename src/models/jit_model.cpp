@@ -13,13 +13,13 @@ public:
 		m_bReinit = argReintialize();
 	}
 
-	torch::Tensor Forward(TENSOR_ARY inputs) override {
+	TENSOR_ARY Forward(TENSOR_ARY inputs) override {
 		std::vector<torch::jit::IValue> jitInputs;
 		for (auto i: inputs) {
 			jitInputs.emplace_back(std::move(i));
 		}
 		auto output = m_JitModule.forward(jitInputs).toTensor();
-		return output;
+		return { output };
 	}
 
 	void TrainMode(bool bTrain = true) override {

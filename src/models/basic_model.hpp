@@ -1,16 +1,8 @@
 #ifndef __BASIC_MODEL_HPP
 #define __BASIC_MODEL_HPP
 
-#include <torch/torch.h>
-#include <torch/script.h>
-#include <torch/nn.h>
+#include "../types.hpp"
 #include "../json.hpp"
-
-using NAMED_PARAMS = std::map<std::string, torch::Tensor>;
-
-using TENSOR_ARY = std::vector<torch::Tensor>;
-
-using WEIGHT_INIT_PROC = std::function<bool(const std::string&, NAMED_PARAMS&)>;
 
 struct PARAM_OPTION{
 	float fLRFactor = 1.f;
@@ -30,7 +22,7 @@ public:
 
 	virtual void Initialize(const nlohmann::json &jConf) = 0;
 
-	virtual torch::Tensor Forward(TENSOR_ARY inputs) = 0;
+	virtual TENSOR_ARY Forward(TENSOR_ARY inputs) = 0;
 
 	virtual PARAM_OPTION GetParamOption(const std::string &strParamName) const;
 

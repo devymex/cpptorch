@@ -189,8 +189,8 @@ int main(int nArgCnt, const char *ppArgs[]) {
 		for (uint64_t nIter = 1; bTrainMode && pTrainLdr->GetBatch(
 				argBatchSize(), device, tData, tTarget); ++nIter) {
 			pOptimizer->ZeroGrad();
-			torch::Tensor tOutput = pModel->Forward({tData});
-			float fLoss = pLoss->Backward(tOutput, tTarget);
+			TENSOR_ARY outputs = pModel->Forward({tData});
+			float fLoss = pLoss->Backward(outputs, {tTarget});
 			fTrainLossSum += fLoss;
 			pOptimizer->IterStep();
 			if (argLogIters() > 0 && nIter % argLogIters() == 0) {
@@ -206,15 +206,18 @@ int main(int nArgCnt, const char *ppArgs[]) {
 		std::vector<std::pair<int64_t, std::vector<float>>> testResults;
 		for (uint64_t nIter = 1; pTestLdr->GetBatch(
 				argBatchSize(), device, tData, tTarget); ++nIter) {
-			torch::Tensor tOutput = pModel->Forward({tData});
+			TENSOR_ARY outputs = pModel->Forward({tData});
 			uint64_t nEndIdx = nIter * argBatchSize();
+			TENSOR_ARY sliced_outputs;
 			if (nEndIdx > pTestLdr->Size()) {
 				int64_t nValidCnt = pTestLdr->Size()
 						- (nIter - 1) * argBatchSize();
-				tOutput = tOutput.slice(0, 0, nValidCnt);
+				for (auto &out : outputs) {
+					sliced_outputs.emplace_back(out.slice(0, 0, nValidCnt));
+				}
 				tTarget = tTarget.slice(0, 0, nValidCnt);
 			}
-			float fLoss = pLoss->Evaluate(tOutput, tTarget);
+			float fLoss = pLoss->Evaluate(sliced_outputs, {tTarget});
 			fTestLossSum += fLoss;
 			if (argLogIters() > 0 && nIter % argLogIters() == 0) {
 				LOG(INFO) << "test_iter=" << nIter << ", loss=" << fLoss;

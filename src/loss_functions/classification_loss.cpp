@@ -5,7 +5,11 @@ namespace tfunc = torch::nn::functional;
 
 class ClassificationLoss : public BasicLoss {
 public:
-	float Backward(torch::Tensor tOutput, torch::Tensor tTarget) override {
+	float Backward(TENSOR_ARY outputs, TENSOR_ARY targets) override {
+		CHECK_EQ(outputs.size(), 1);
+		CHECK_EQ(targets.size(), 1);
+		auto &tOutput = outputs[0];
+		auto &tTarget = targets[0];
 		uint64_t nBatchSize = tOutput.size(0);
 		CHECK_GT(nBatchSize, 0);
 		torch::Tensor tLoss = tfunc::nll_loss(tOutput, tTarget);
@@ -14,7 +18,11 @@ public:
 		return fLoss;
 	}
 
-	float Evaluate(torch::Tensor tOutput, torch::Tensor tTarget) override {
+	float Evaluate(TENSOR_ARY outputs, TENSOR_ARY targets) override {
+		CHECK_EQ(outputs.size(), 1);
+		CHECK_EQ(targets.size(), 1);
+		auto &tOutput = outputs[0];
+		auto &tTarget = targets[0];
 		uint64_t nBatchSize = tOutput.size(0);
 		uint64_t nClassNum = tOutput.size(1);
 		torch::Tensor tLoss = tfunc::nll_loss(tOutput, tTarget);

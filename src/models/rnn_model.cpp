@@ -23,7 +23,7 @@ public:
 				argHiddenSize(), argCategories()));
 	}
 
-	torch::Tensor Forward(TENSOR_ARY inputs) override {
+	TENSOR_ARY Forward(TENSOR_ARY inputs) override {
 		auto input = inputs[0];
 		CHECK_EQ(input.dim(), 3);
 		int64_t nBatchSize = input.size(0);
@@ -40,7 +40,7 @@ public:
 		auto out = m_LSTM(input, std::make_tuple(std::move(h), std::move(c)));
 		h = std::get<0>(out)[nStrLen - 1];
 		auto softmax = torch::log_softmax(m_Softmax(h), 1);
-		return softmax;
+		return { softmax };
 	}
 
 private:
