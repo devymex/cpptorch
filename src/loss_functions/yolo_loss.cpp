@@ -216,6 +216,9 @@ private:
 			std::vector<std::vector<TRUTH>> &truths) {
 		auto nBatchSize = truths.size();
 		uint64_t nNumVals = tPredVals.sizes().back();
+#ifdef DEBUG_DUMP_DELTA
+		auto tDump = tPredVals.contiguous();
+#endif
 		for (uint64_t b = 0; b < nBatchSize; ++b) {
 			for (auto &truth: truths[b]) {
 				auto &truBox = truth.first;
@@ -246,6 +249,18 @@ private:
 				}
 				pAlpha[m_nNumBoxVals + truth.second] = -1;
 				pBeta[m_nNumBoxVals + truth.second] = 1;
+
+				static int n = 0;
+#ifdef DEBUG_DUMP_DELTA
+				std::ostringstream oss;
+				auto p = tDump.data_ptr<float>() + iAnc * nNumVals;
+				oss << n++ << " " << p[8];
+				oss << " (" << p[0] << "," << truCenter.x * ancInfo.cells.width << ")";
+				oss << " (" << p[1] << "," << truCenter.y * ancInfo.cells.height << ")";
+				oss << " (" << p[2] << "," << truBox.width / ancInfo.boxSize.width << ")";
+				oss << " (" << p[3] << "," << truBox.height / ancInfo.boxSize.height << ")";
+				LOG(INFO) << oss.str();
+#endif
 			}
 		}
 	}

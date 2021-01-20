@@ -101,7 +101,8 @@ void Test() {
 	}
 }
 
-bool InitModuleWeight(const std::string &strModuleType, NAMED_PARAMS &weights) {
+bool InitModuleWeight(const std::string &strModuleType,
+		NAMED_PARAMS &weights, NAMED_PARAMS &buffers) {
 	auto iWeight = weights.find("weight");
 	auto iBias = weights.find("bias");
 	if (strModuleType.find("Conv2d") != std::string::npos) {
@@ -119,6 +120,14 @@ bool InitModuleWeight(const std::string &strModuleType, NAMED_PARAMS &weights) {
 	} else if (strModuleType.find("BatchNorm2d") != std::string::npos) {
 		CHECK(iWeight != weights.end());
 		CHECK(iBias != weights.end());
+		auto iMean = buffers.find("running_mean");
+		if (iMean != buffers.end()) {
+			iMean->second.fill_(0);
+		}
+		auto iVar = buffers.find("running_var");
+		if (iVar != buffers.end()) {
+			iVar->second.fill_(1);
+		}
 		torch::nn::init::normal_(iWeight->second, 1., 0.02);
 		torch::nn::init::constant_(iBias->second, 0.);
 	} else if (strModuleType.find("LSTM") != std::string::npos) {
@@ -132,6 +141,7 @@ bool InitModuleWeight(const std::string &strModuleType, NAMED_PARAMS &weights) {
 				torch::nn::init::xavier_normal_(w.second);
 			}
 		}
+	} else if (strModuleType.find("YoloLayer") != std::string::npos) {
 	} else {
 		return false;
 	}

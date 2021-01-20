@@ -22,14 +22,20 @@ PARAM_OPTION BasicModel::GetParamOption(const std::string &strParamName) const {
 }
 
 void BasicModel::InitWeights(WEIGHT_INIT_PROC InitProc) {
-	for (const auto &pSubMod: children()) {
-		NAMED_PARAMS namedParams;
-		for (auto &params: pSubMod->named_parameters()) {
-			namedParams[params.key()] = params.value();
-		}
-		if (!InitProc(pSubMod->name(), namedParams)) {
-			for (const auto &param: namedParams) {
-				LOG(INFO) << "Unintialized parameter: " << param.first;
+	for (const auto &pSubMod: modules()) {
+		if (pSubMod->children().size() == 0) {
+			NAMED_PARAMS params;
+			for (auto &param: pSubMod->named_parameters()) {
+				params[param.key()] = param.value();
+			}
+			NAMED_PARAMS buffers;
+			for (const auto &buf: pSubMod->named_buffers()) {
+				buffers[buf.key()] = buf.value();
+			}
+			if (!params.empty() || !buffers.empty()) {
+				if (!InitProc(pSubMod->name(), params, buffers)) {
+					LOG(INFO) << "Unintialized module: " << pSubMod->name();
+				}
 			}
 		}
 	}

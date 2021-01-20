@@ -53,16 +53,20 @@ public:
 
 	void InitWeights(WEIGHT_INIT_PROC InitProc) override {
 		if (m_bReinit) {
-			for (const auto &subMod: m_JitModule.named_children()) {
+			for (const auto &subMod: m_JitModule.named_modules()) {
 				auto typeName = subMod.value.type()->name();
-				if (typeName.has_value()) {
-					NAMED_PARAMS namedParams;
-					for (const auto &params: subMod.value.named_parameters()) {
-						namedParams[params.name] = params.value;
+				if (typeName.has_value() && subMod.value.children().size() == 0) {
+					NAMED_PARAMS params;
+					for (const auto &param: subMod.value.named_parameters()) {
+						params[param.name] = param.value;
 					}
-					if (!InitProc(typeName->name(), namedParams)) {
-						for (const auto &param: namedParams) {
-							LOG(INFO) << "Unintialized parameter: " << param.first;
+					NAMED_PARAMS buffers;
+					for (const auto &buf: subMod.value.named_buffers()) {
+						buffers[buf.name] = buf.value;
+					}
+					if (!params.empty() || !buffers.empty()) {
+						if (!InitProc(typeName->name(), params, buffers)) {
+							LOG(INFO) << "Unintialized module: " << typeName->name();
 						}
 					}
 				}

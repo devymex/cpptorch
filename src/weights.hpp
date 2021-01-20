@@ -9,6 +9,7 @@ NAMED_PARAMS LoadWeights(const std::string &strFilename);
 
 void SaveWeights(const NAMED_PARAMS &weights, const std::string &strFilename);
 
-bool InitModuleWeight(const std::string &strModuleType, NAMED_PARAMS &weights);
+bool InitModuleWeight(const std::string &strModuleType,
+		NAMED_PARAMS &weights, NAMED_PARAMS &buffers);
 
 #endif // #ifndef __WEIGHTS_HPP

@@ -194,7 +194,8 @@ int main(int nArgCnt, const char *ppArgs[]) {
 			fTrainLossSum += fLoss;
 			pOptimizer->IterStep();
 			if (argLogIters() > 0 && nIter % argLogIters() == 0) {
-				LOG(INFO) << "train_iter=" << nIter << ", loss=" << fLoss;
+				LOG(INFO) << "train_iter=" << nIter
+						  << ", loss=" << fLoss / argBatchSize();
 			}
 		}
 		pOptimizer->EpochStep(nEpoch + nInitEpoch);
@@ -208,8 +209,9 @@ int main(int nArgCnt, const char *ppArgs[]) {
 				argBatchSize(), data, targets, device); ++nIter) {
 			TENSOR_ARY outputs = pModel->Forward(data);
 			auto iBeg = (nIter - 1) * argBatchSize();
+			auto nNumRemains = argBatchSize();
 			if (iBeg + argBatchSize() > pTestLdr->Size()) {
-				auto nNumRemains = pTestLdr->Size() - iBeg;
+				nNumRemains = pTestLdr->Size() - iBeg;
 				for (auto &out : outputs) {
 					out = out.slice(0, 0, nNumRemains);
 				}
@@ -220,7 +222,8 @@ int main(int nArgCnt, const char *ppArgs[]) {
 			float fLoss = pLoss->Evaluate(std::move(outputs), std::move(targets));
 			fTestLossSum += fLoss;
 			if (argLogIters() > 0 && nIter % argLogIters() == 0) {
-				LOG(INFO) << "test_iter=" << nIter << ", loss=" << fLoss;
+				LOG(INFO) << "test_iter=" << nIter
+						  << ", loss=" << fLoss / nNumRemains;
 			}
 		}
 

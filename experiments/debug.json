@@ -3,11 +3,12 @@
 
 	"device": "GPU",
 	"device_id": 1,
+	"random_seed": 0,
 
 	"model": {
 		"name": "JIT",
 		"model_file": "test/yolov3.pth",
-		"reinitialize": false
+		"reinitialize": true
 	},
 	"loss": {
 		"name": "YOLO"
@@ -21,7 +22,7 @@
 	"test_data": {
 		"name": "YOLO",
 		"shuffle": false,
-		"image_list": "/mnt/data/prjdata/voc/train.txt"
+		"image_list": "/mnt/data/prjdata/voc/2007_train.txt"
 	},
 
 	"optimizer": {
@@ -33,8 +34,8 @@
 		"momentum": 0.9
 	},
 
-	"max_epoch": 1,
-	"batch_size": 8,
+	"max_epoch": 1000,
+	"batch_size": 4,
 
 	"save_state_epochs": 1,
 	"state_path": "experiments/states",

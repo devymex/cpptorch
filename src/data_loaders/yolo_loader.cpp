@@ -55,6 +55,9 @@ protected:
 		TENSOR_ARY labels;
 		for (uint64_t b = 0; b < indices.size(); ++b) {
 			bfs::path imagePath(m_ImgList[indices[b]]);
+#ifdef DEBUG_TEST_IMG
+			imagePath = bfs::path("/mnt/data/prjdata/voc/VOCdevkit/VOC2007/JPEGImages/000012.jpg");
+#endif
 			CHECK(imagePath.parent_path().leaf().string() == "JPEGImages");
 			auto labelPath = imagePath.parent_path().parent_path() / "labels";
 			labelPath /= (imagePath.stem().string() + ".txt");
