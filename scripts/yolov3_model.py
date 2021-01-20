@@ -132,14 +132,14 @@ class YoloLayer(nn.Module):
         input = input.reshape(self.calc_shape).permute(2, 0, 1, 3, 4)
         box_cx = torch.sigmoid(input[0:1]) + self.anc_off_c # sigmoid(px) + c
         box_cy = torch.sigmoid(input[1:2]) + self.anc_off_r # sigmoid(py) + r
-        box_w = torch.exp(input[2:3])
-        box_h = torch.exp(input[3:4])
+        box_w = input[2:3]
+        box_h = input[3:4]
         conf_probs = torch.sigmoid(input[4:]) # objectness and probabilities
 
-        box_ws = box_w * self.scale_w # exp(pw) * anc_w / img_w
-        box_hs = box_h * self.scale_h # exp(ph) * anc_h / img_h
-        box_x1 = box_cx / self.anc_cols - box_ws / 2 # x1 = cx - w / 2
-        box_y1 = box_cy / self.anc_rows - box_hs / 2 # y1 = cy - h / 2
+        box_ws = torch.exp(box_w) * self.scale_w # exp(pw) * anc_w / img_w
+        box_hs = torch.exp(box_h) * self.scale_h # exp(ph) * anc_h / img_h
+        box_x1 = box_cx / self.anc_cols - box_ws / 2
+        box_y1 = box_cy / self.anc_rows - box_hs / 2
         box_x2 = box_x1 + box_ws # x2 = x1 + w
         box_y2 = box_y1 + box_hs # y2 = y1 + h
 

@@ -189,7 +189,7 @@ int main(int nArgCnt, const char *ppArgs[]) {
 		for (uint64_t nIter = 1; bTrainMode && pTrainLdr->GetBatch(
 				argBatchSize(), data, targets, device); ++nIter) {
 			pOptimizer->ZeroGrad();
-			TENSOR_ARY outputs = pModel->Forward(data);
+			TENSOR_ARY outputs = pModel->Forward(std::move(data));
 			float fLoss = pLoss->Backward(std::move(outputs), std::move(targets));
 			fTrainLossSum += fLoss;
 			pOptimizer->IterStep();
@@ -207,7 +207,7 @@ int main(int nArgCnt, const char *ppArgs[]) {
 		std::vector<std::pair<int64_t, std::vector<float>>> testResults;
 		for (uint64_t nIter = 1; pTestLdr->GetBatch(
 				argBatchSize(), data, targets, device); ++nIter) {
-			TENSOR_ARY outputs = pModel->Forward(data);
+			TENSOR_ARY outputs = pModel->Forward(std::move(data));
 			auto iBeg = (nIter - 1) * argBatchSize();
 			auto nNumRemains = argBatchSize();
 			if (iBeg + argBatchSize() > pTestLdr->Size()) {

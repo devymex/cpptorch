@@ -112,7 +112,7 @@ private:
 			}
 		}
 		__UpdateAnchorInfo(outputs, imgSize);
-		auto tPredVals = __ConcatenateOutputs(outputs);
+		auto tPredVals = __ConcatenateOutputs(outputs); // batch*anc*row*col, val
 		auto nNumBatchBoxes = tPredVals.size(0);
 
 		// Calculate negative and positive delta(alpha and beta)
@@ -176,9 +176,14 @@ private:
 	}
 
 	torch::Tensor __ConcatenateOutputs(const TENSOR_ARY &outputs) {
+		auto nBatchSize = outputs[0].sizes().front();
+		auto nNumVals   = outputs[0].sizes().back();
 		TENSOR_ARY flatOutputs;
-		for (auto &out : outputs) {
-			flatOutputs.emplace_back(out.view({-1, out.sizes().back()}));
+		for (uint64_t i = 0; i < nBatchSize; ++i) {
+			for (auto &out : outputs) {
+				auto tFlat = out.slice(0, i, i + 1).reshape({-1, nNumVals});
+				flatOutputs.emplace_back(std::move(tFlat));
+			}
 		}
 		return torch::cat(std::move(flatOutputs), 0).cpu();
 	}
@@ -238,8 +243,8 @@ private:
 				pAlpha[8] = -1;
 				pBeta[0]  = fScale * truCenter.x * ancInfo.cells.width;
 				pBeta[1]  = fScale * truCenter.y * ancInfo.cells.height;
-				pBeta[2]  = fScale * truBox.width / ancInfo.boxSize.width;
-				pBeta[3]  = fScale * truBox.height / ancInfo.boxSize.height;
+				pBeta[2]  = fScale * std::log(truBox.width / ancInfo.boxSize.width);
+				pBeta[3]  = fScale * std::log(truBox.height / ancInfo.boxSize.height);
 				pBeta[8]  = 1;
 
 				if (pAlpha[m_nNumBoxVals + truth.second] == 0) {
@@ -257,8 +262,8 @@ private:
 				oss << n++ << " " << p[8];
 				oss << " (" << p[0] << "," << truCenter.x * ancInfo.cells.width << ")";
 				oss << " (" << p[1] << "," << truCenter.y * ancInfo.cells.height << ")";
-				oss << " (" << p[2] << "," << truBox.width / ancInfo.boxSize.width << ")";
-				oss << " (" << p[3] << "," << truBox.height / ancInfo.boxSize.height << ")";
+				oss << " (" << p[2] << "," << std::log(truBox.width / ancInfo.boxSize.width) << ")";
+				oss << " (" << p[3] << "," << std::log(truBox.height / ancInfo.boxSize.height) << ")";
 				LOG(INFO) << oss.str();
 #endif
 			}

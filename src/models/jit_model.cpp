@@ -15,7 +15,7 @@ public:
 
 	TENSOR_ARY Forward(TENSOR_ARY inputs) override {
 		std::vector<torch::jit::IValue> jitInputs;
-		for (auto i: inputs) {
+		for (auto &i: inputs) {
 			jitInputs.emplace_back(std::move(i));
 		}
 		auto outputs = m_JitModule.forward(jitInputs);

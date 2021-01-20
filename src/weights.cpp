@@ -128,7 +128,7 @@ bool InitModuleWeight(const std::string &strModuleType,
 		if (iVar != buffers.end()) {
 			iVar->second.fill_(1);
 		}
-		torch::nn::init::normal_(iWeight->second, 1., 0.02);
+		torch::nn::init::constant_(iWeight->second, 1.);
 		torch::nn::init::constant_(iBias->second, 0.);
 	} else if (strModuleType.find("LSTM") != std::string::npos) {
 		for (auto &w : weights) {
