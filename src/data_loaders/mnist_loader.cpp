@@ -28,10 +28,10 @@ public:
 
 protected:
 	void _LoadBatch(std::vector<uint64_t> indices,
-			torch::Tensor &tData, torch::Tensor &tTarget) override {
+			TENSOR_ARY &data, TENSOR_ARY &targets) override {
 		CHECK(!indices.empty());
-		std::vector<torch::Tensor> dataAry;
-		std::vector<torch::Tensor> targetAry;
+		TENSOR_ARY dataAry;
+		TENSOR_ARY targetAry;
 		for (uint64_t i = 0; i < indices.size(); ++i) {
 			CHECK_LT(indices[i], Size());
 			auto sample = m_pMNIST->get(indices[i]);
@@ -46,8 +46,8 @@ protected:
 			dataAry.emplace_back(std::move(sample.data));
 			targetAry.emplace_back(std::move(sample.target));
 		}
-		tData = torch::cat(dataAry);
-		tTarget = torch::cat(targetAry);
+		data = TENSOR_ARY { torch::cat(dataAry) };
+		targets = TENSOR_ARY { torch::cat(targetAry) };
 	}
 
 protected:

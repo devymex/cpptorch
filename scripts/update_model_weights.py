@@ -1,14 +1,12 @@
-import io, argparse, torch, onnx
+import io, argparse, torch
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--script_model', nargs=1, required=True, type=str,
 					help='Script module for export')
 parser.add_argument('--weight_file', nargs=1, required=False, type=str,
 					help='Override weights by specific file')
-parser.add_argument('--input_shape', nargs='+', required=True, type=int,
-					help='Shape of example input for tracing')
-parser.add_argument('--onnx_file', nargs=1, required=True, type=str,
-					help='Output filename of ONNX model')
+parser.add_argument('--output_file', nargs=1, required=False, type=str,
+					help='Override weights by specific file')
 args = parser.parse_args()
 
 def load_weights(model):
@@ -30,20 +28,4 @@ model.train(False)
 if args.weight_file is not None:
 	load_weights(model)
 
-example_input = torch.randn(args.input_shape)
-example_output = model.forward(example_input)
-
-torch.onnx.export(model,
-	example_input,
-	args.onnx_file[0],
-	verbose = False,
-	input_names = ['image'],
-	output_names = ['predict'],
-	example_outputs = example_output,
-	opset_version=11
-	)
-
-model = onnx.load(args.onnx_file[0])
-onnx.checker.check_model(model)
-print(onnx.helper.printable_graph(model.graph))
-print('Done!')
+torch.jit.save(model, args.output_file[0])

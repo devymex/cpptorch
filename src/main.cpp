@@ -182,15 +182,15 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	// Main Loop
 	// -------------------------------------------------------------------------
 	for (uint64_t nEpoch = 1; nEpoch + nInitEpoch <= argMaxEpoch(); ++nEpoch) {
-		torch::Tensor tData, tTarget;
+		TENSOR_ARY data, targets;
 		pTrainLdr->ResetCursor();
 		pModel->TrainMode(true);
 		float fTrainLossSum = 0.f;
 		for (uint64_t nIter = 1; bTrainMode && pTrainLdr->GetBatch(
-				argBatchSize(), device, tData, tTarget); ++nIter) {
+				argBatchSize(), data, targets, device); ++nIter) {
 			pOptimizer->ZeroGrad();
-			TENSOR_ARY outputs = pModel->Forward({tData});
-			float fLoss = pLoss->Backward(outputs, {tTarget});
+			TENSOR_ARY outputs = pModel->Forward(data);
+			float fLoss = pLoss->Backward(std::move(outputs), std::move(targets));
 			fTrainLossSum += fLoss;
 			pOptimizer->IterStep();
 			if (argLogIters() > 0 && nIter % argLogIters() == 0) {
@@ -205,19 +205,19 @@ int main(int nArgCnt, const char *ppArgs[]) {
 		float fTestLossSum = 0.f;
 		std::vector<std::pair<int64_t, std::vector<float>>> testResults;
 		for (uint64_t nIter = 1; pTestLdr->GetBatch(
-				argBatchSize(), device, tData, tTarget); ++nIter) {
-			TENSOR_ARY outputs = pModel->Forward({tData});
-			uint64_t nEndIdx = nIter * argBatchSize();
-			TENSOR_ARY sliced_outputs;
-			if (nEndIdx > pTestLdr->Size()) {
-				int64_t nValidCnt = pTestLdr->Size()
-						- (nIter - 1) * argBatchSize();
+				argBatchSize(), data, targets, device); ++nIter) {
+			TENSOR_ARY outputs = pModel->Forward(data);
+			auto iBeg = (nIter - 1) * argBatchSize();
+			if (iBeg + argBatchSize() > pTestLdr->Size()) {
+				auto nNumRemains = pTestLdr->Size() - iBeg;
 				for (auto &out : outputs) {
-					sliced_outputs.emplace_back(out.slice(0, 0, nValidCnt));
+					out = out.slice(0, 0, nNumRemains);
 				}
-				tTarget = tTarget.slice(0, 0, nValidCnt);
+				for (auto &t: targets) {
+					t = t.slice(0, 0, nNumRemains);
+				}
 			}
-			float fLoss = pLoss->Evaluate(sliced_outputs, {tTarget});
+			float fLoss = pLoss->Evaluate(std::move(outputs), std::move(targets));
 			fTestLossSum += fLoss;
 			if (argLogIters() > 0 && nIter % argLogIters() == 0) {
 				LOG(INFO) << "test_iter=" << nIter << ", loss=" << fLoss;

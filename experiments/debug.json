@@ -6,39 +6,39 @@
 
 	"model": {
 		"name": "JIT",
-		"model_filename": "experiments/states/simplenet_s.pth",
-		"reinitialize": true
+		"model_file": "test/yolov3.pth",
+		"reinitialize": false
 	},
 	"loss": {
-		"name": "Classification"
+		"name": "YOLO"
 	},
 	"train_data": {
-		"name": "MNIST",
-		"shuffle": true,
-		"data_root": "/mnt/data/prjdata/MNIST/raw"
+		"name": "YOLO",
+		"shuffle": false,
+		"image_list": "/mnt/data/prjdata/voc/train.txt"
 	},
 
 	"test_data": {
-		"name": "MNIST",
+		"name": "YOLO",
 		"shuffle": false,
-		"data_root": "/mnt/data/prjdata/MNIST/raw"
+		"image_list": "/mnt/data/prjdata/voc/train.txt"
 	},
 
 	"optimizer": {
 		"name": "SGD",
-		"learning_rate": 0.01,
+		"learning_rate": 0.0001,
 		"lr_step_epochs": 100,
 		"lr_step_gamma": 0.5,
 		"weight_decay": 1e-4,
 		"momentum": 0.9
 	},
 
-	"max_epoch": 5,
-	"batch_size": 32,
+	"max_epoch": 1,
+	"batch_size": 8,
 
-	"save_state_epochs": 5,
+	"save_state_epochs": 1,
 	"state_path": "experiments/states",
 	"load_last": false,
 	"log_path.ignore": "experiments/log",
-	"log_iters": 0
+	"log_iters": 10
 }

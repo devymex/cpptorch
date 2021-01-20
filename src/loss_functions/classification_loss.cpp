@@ -7,28 +7,24 @@ class ClassificationLoss : public BasicLoss {
 public:
 	float Backward(TENSOR_ARY outputs, TENSOR_ARY targets) override {
 		CHECK_EQ(outputs.size(), 1);
-		CHECK_EQ(targets.size(), 1);
 		auto &tOutput = outputs[0];
-		auto &tTarget = targets[0];
 		uint64_t nBatchSize = tOutput.size(0);
 		CHECK_GT(nBatchSize, 0);
-		torch::Tensor tLoss = tfunc::nll_loss(tOutput, tTarget);
+		torch::Tensor tLoss = tfunc::nll_loss(tOutput, targets[0]);
 		float fLoss = tLoss.item().toFloat() * nBatchSize;
 		tLoss.backward();
 		return fLoss;
 	}
 
-	float Evaluate(TENSOR_ARY outputs, TENSOR_ARY targets) override {
+	float Evaluate(TENSOR_ARY outputs, TENSOR_ARY target) override {
 		CHECK_EQ(outputs.size(), 1);
-		CHECK_EQ(targets.size(), 1);
 		auto &tOutput = outputs[0];
-		auto &tTarget = targets[0];
 		uint64_t nBatchSize = tOutput.size(0);
 		uint64_t nClassNum = tOutput.size(1);
-		torch::Tensor tLoss = tfunc::nll_loss(tOutput, tTarget);
+		torch::Tensor tLoss = tfunc::nll_loss(tOutput, target[0]);
 		float fLoss = tLoss.item().toFloat() * nBatchSize;
 
-		auto tSum = tOutput.argmax(1).eq(tTarget).sum();
+		auto tSum = tOutput.argmax(1).eq(target[0]).sum();
 		m_nCorrectCnt += tSum.item().toLong();
 		m_nTotalCnt += nBatchSize;
 

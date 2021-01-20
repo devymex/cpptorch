@@ -6,10 +6,10 @@ class JITModel : public BasicModel {
 public:
 	void Initialize(const nlohmann::json &jConf) override {
 		ArgMan argMan;
-		Arg<std::string> argModelFilename("model_filename", argMan);
+		Arg<std::string> argModelFile("model_file", argMan);
 		Arg<bool> argReintialize("reinitialize", false, argMan);
 		ParseArgsFromJson(jConf, argMan);
-		m_JitModule = torch::jit::load(argModelFilename());
+		m_JitModule = torch::jit::load(argModelFile());
 		m_bReinit = argReintialize();
 	}
 
@@ -18,8 +18,20 @@ public:
 		for (auto i: inputs) {
 			jitInputs.emplace_back(std::move(i));
 		}
-		auto output = m_JitModule.forward(jitInputs).toTensor();
-		return { output };
+		auto outputs = m_JitModule.forward(jitInputs);
+		TENSOR_ARY results;
+		if (outputs.isTuple()) {
+			auto pTuple = outputs.toTuple();
+			for (auto &out : pTuple->elements()) {
+				CHECK(out.isTensor());
+				results.emplace_back(out.toTensor());
+			}
+		} else if (outputs.isTensor()) {
+			results.emplace_back(outputs.toTensor());
+		} else {
+			LOG(FATAL) << outputs.type()->str();
+		}
+		return results;
 	}
 
 	void TrainMode(bool bTrain = true) override {

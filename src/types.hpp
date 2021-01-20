@@ -13,4 +13,8 @@ using TENSOR_ARY = std::vector<torch::Tensor>;
 using NAMED_PARAMS = std::map<std::string, torch::Tensor>;
 using WEIGHT_INIT_PROC = std::function<bool(const std::string&, NAMED_PARAMS&)>;
 
+// #define DEBUG_TEST_IMG
+// #define DEBUG_DRAW_IMAGE_AND_LABEL
+
+
 #endif // #ifndef __TYPES_HPP

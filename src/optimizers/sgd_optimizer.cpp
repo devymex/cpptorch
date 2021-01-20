@@ -26,7 +26,7 @@ public:
 	}
 
 	void SetModel(BasicModel &model) override {
-		std::map<PARAM_OPTION, std::vector<torch::Tensor>> optionParams;
+		std::map<PARAM_OPTION, TENSOR_ARY> optionParams;
 		for (const auto &param : model.NamedParameters()) {
 			PARAM_OPTION opt = model.GetParamOption(param.first);
 			optionParams[opt].emplace_back(param.second);

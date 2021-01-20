@@ -72,6 +72,8 @@
 		"typeindex": "cpp",
 		"variant": "cpp",
 		"*.ipp": "cpp",
-		"*.cuh": "cpp"
+		"*.cuh": "cpp",
+		"strstream": "cpp",
+		"cfenv": "cpp"
 	}
 }

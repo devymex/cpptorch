@@ -3,6 +3,7 @@
 #include <sstream>
 #include <thread>
 #include <glog/logging.h>
+#include <opencv2/opencv.hpp>
 
 #include "../argman.hpp"
 #include "../utils.hpp"
@@ -40,8 +41,8 @@ void BatchLoader::ResetCursor() {
 	}
 }
 
-bool BatchLoader::GetBatch(uint64_t nBatchSize, torch::Device device,
-			torch::Tensor &tData, torch::Tensor &tTarget) {
+bool BatchLoader::GetBatch(uint64_t nBatchSize, TENSOR_ARY &data,
+		TENSOR_ARY &targets, torch::Device device) {
 	if (m_Worker.joinable()) {
 		m_Worker.join();
 	}
@@ -52,22 +53,36 @@ bool BatchLoader::GetBatch(uint64_t nBatchSize, torch::Device device,
 	if (m_nCursor >= Size()) {
 		return false;
 	}
-	if (m_tLoadingData.dim() == 0 || nBatchSize != m_tLoadingData.size(0)) {
-		__LoadBatch(_GetBatchIndices(nBatchSize), device,
-				m_tLoadingData, m_tLoadingTarget);
+	if (m_LoadingData.empty() || nBatchSize != m_LoadingData[0].size(0)) {
+		__LoadBatchToDevice(_GetBatchIndices(nBatchSize),
+				m_LoadingData, m_LoadingTarget, device);
 	}
 	m_nCursor += nBatchSize;
-	std::swap(m_tLoadingData, tData);
-	std::swap(m_tLoadingTarget, tTarget);
+	data.swap(m_LoadingData);
+	targets.swap(m_LoadingTarget);
 
-	//__LoadBatch(_GetBatchIndices(nBatchSize), device,
-	//		m_tLoadingData, m_tLoadingTarget);
+#ifdef DEBUG_DRAW_IMAGE_AND_LABEL
+	auto tBoxes = targets[0].to(torch::kCPU);
+	auto tImgSize = targets[1].to(torch::kCPU);
+	auto tData = data[0].squeeze(0).permute({1, 2, 0}) * 255;
+	tData = tData.to(torch::kCPU, torch::kUInt8);
+	cv::Size imgSize(tImgSize[0].item<float>(), tImgSize[1].item<float>());
+	cv::Mat img(imgSize, CV_8UC3, tData.data_ptr<uint8_t>());
+	float *pBoxes = tBoxes.data_ptr<float>();
+	for (uint64_t i = 0; i < tBoxes.size(0); ++i) {
+		cv::Rect box = {cv::Point(int(pBoxes[i * 5 + 1] * imgSize.width), int(pBoxes[i * 5 + 2] * imgSize.height)),
+						cv::Point(int(pBoxes[i * 5 + 3] * imgSize.width), int(pBoxes[i * 5 + 4] * imgSize.height))};
+		cv::rectangle(img, box, cv::Scalar(0, 255, 0), 2);
+	}
+	cv::imwrite("test/img.png", img);
+#endif
+
 	m_Worker = std::thread(
-		[&](std::vector<uint64_t> _indices, torch::Device device,
-				torch::Tensor &_tData, torch::Tensor &_tTarget) {
-			__LoadBatch(std::move(_indices), device, _tData, _tTarget);
-		}, _GetBatchIndices(nBatchSize), device,
-			std::ref(m_tLoadingData), std::ref(m_tLoadingTarget));
+		[&](std::vector<uint64_t> _indices, TENSOR_ARY &_data,
+				TENSOR_ARY &_targets, torch::Device device) {
+			__LoadBatchToDevice(std::move(_indices), _data, _targets, device);
+		}, _GetBatchIndices(nBatchSize), std::ref(m_LoadingData),
+				std::ref(m_LoadingTarget), device);
 	return true;
 }
 
@@ -79,13 +94,17 @@ std::vector<uint64_t> BatchLoader::_GetBatchIndices(uint64_t nBatchSize) const {
 	return indices;
 }
 
-void BatchLoader::__LoadBatch(std::vector<uint64_t> indices, torch::Device device,
-		torch::Tensor &tData, torch::Tensor &tTarget) {
-	_LoadBatch(std::move(indices), tData, tTarget);
-	if (tData.device() != device) {
-		tData = tData.to(device);
+void BatchLoader::__LoadBatchToDevice(std::vector<uint64_t> indices,
+		TENSOR_ARY &data, TENSOR_ARY &targets, torch::Device device) {
+	_LoadBatch(std::move(indices), data, targets);
+	for (auto &d : data) {
+		if (d.device() != device) {
+			d = d.to(device);
+		}
 	}
-	if (tTarget.device() != device) {
-		tTarget = tTarget.to(device);
+	for (auto &t : targets) {
+		if (t.device() != device) {
+			t = t.to(device);
+		}
 	}
 }

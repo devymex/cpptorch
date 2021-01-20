@@ -26,14 +26,30 @@
 			]
 		},
 		{
+			"name": "Python: Current File",
+			"type": "python",
+			"request": "launch",
+			"program": "${file}",
+			"console": "integratedTerminal"
+		},
+		{
 			"name": "Python: export_onnx.py",
 			"type": "python",
 			"request": "launch",
 			"program": "scripts/export_onnx.py",
-			"args": ["--script_model", "experiments/states/simplenet.pth",
-					 "--onnx_file", "experiments/states/simplenet.onnx",
-					 "--weight_file", "experiments/states/debug_e5.pkl.210101125900",
-					 "--input_shape", "1", "1", "28", "28"],
+			"args": [
+				"--script_model",
+				"experiments/states/simplenet.pth",
+				"--onnx_file",
+				"experiments/states/simplenet.onnx",
+				"--weight_file",
+				"experiments/states/debug_e5.pkl.210101125900",
+				"--input_shape",
+				"1",
+				"1",
+				"28",
+				"28"
+			],
 			"console": "integratedTerminal"
 		}
 	]
