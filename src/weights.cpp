@@ -52,16 +52,20 @@ NAMED_PARAMS LoadWeights(const std::string &strFilename) {
 	CHECK(inFile.is_open());
 	NAMED_PARAMS namedParams;
 	for (std::string strLine; std::getline(inFile, strLine); ) {
-		auto iNameEnd = strLine.find(' ');
-		CHECK(iNameEnd != std::string::npos);
-		CHECK_GT(strLine.size(), iNameEnd);
-		const char *pData = strLine.data();
-		std::vector<char> bytes;
-		for (uint64_t i = iNameEnd + 2; i < strLine.size(); i += 2) {
-			uint16_t hex = *(uint16_t*)(pData + i);
-			bytes.push_back(char(HexWord2Num(hex)));
+		auto iValPos = strLine.find(' ');
+		CHECK(iValPos != std::string::npos);
+		std::string strName(strLine.begin(), strLine.begin() + iValPos);
+
+		++iValPos;
+		CHECK_GT(strLine.size(), iValPos);
+		auto nBinLen = strLine.size() - iValPos;
+		CHECK_EQ(nBinLen % 2, 0);
+		auto pData = strLine.data();
+		std::vector<char> bytes(nBinLen / 2);
+		for (uint64_t i = 0; i < bytes.size(); ++i) {
+			uint16_t hex = *(uint16_t*)(pData + iValPos + i * 2);
+			bytes[i] = char(HexWord2Num(hex));
 		}
-		std::string strName(strLine.begin(), strLine.begin() + iNameEnd);
 		namedParams[strName] = torch::pickle_load(bytes).toTensor();
 	}
 	return namedParams;

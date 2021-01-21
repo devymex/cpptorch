@@ -163,7 +163,7 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	if (argLoadLast()) {
 		auto lastState = FindLastState(argStatePath(), argConfName());
 		nInitEpoch = lastState.first;
-		pModel->LoadWeights(argModelFile());
+		pModel->LoadWeights(lastState.second);
 		if (nInitEpoch > 0) {
 			LOG(INFO) << "Weights loaded from last epoch " << nInitEpoch;
 		}

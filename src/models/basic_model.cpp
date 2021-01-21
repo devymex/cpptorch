@@ -46,7 +46,8 @@ void BasicModel::LoadWeights(const std::string &strFilename) {
 	for (const auto &param: NamedParameters()) {
 		auto iLoaded = loadedParams.find(param.first);
 		if (iLoaded != loadedParams.end()) {
-			param.second.set_data(iLoaded->second);
+			auto paramDev = param.second.options().device();
+			param.second.set_data(iLoaded->second.to(paramDev));
 		} else {
 			LOG(INFO) << "Unintialized parameter: " << param.first;
 		}
