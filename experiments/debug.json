@@ -35,7 +35,7 @@
 	},
 
 	"max_epoch": 1000,
-	"batch_size": 4,
+	"batch_size": 12,
 
 	"save_state_epochs": 1,
 	"state_path": "experiments/states",

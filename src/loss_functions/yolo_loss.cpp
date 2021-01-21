@@ -93,14 +93,19 @@ private:
 			const TENSOR_ARY &targets) {
 		// Preprocess for truth-boxes
 		CHECK_EQ(targets.size(), 2);
-		uint64_t nBatchSize = targets[0].size(0);
+		auto nBatchSize = targets[0].size(0);
 		CHECK_GT(nBatchSize, 0);
-		torch::Tensor tMeta = targets[1].cpu();
-		cv::Size2f imgSize = {tMeta[0].item<float>(), tMeta[1].item<float>()};
 		auto truths = __ExtractTruthBoxes(targets[0]);
 
+		// Get image size from meta information
+		torch::Tensor tMeta = targets[1].cpu().contiguous();
+		CHECK_EQ(tMeta.dim(), 2);
+		CHECK_EQ(tMeta.size(0), nBatchSize);
+		auto pMeta = (cv::Size2f*)tMeta.data_ptr<float>();
+		std::vector<cv::Size2f> batchImgSize(pMeta, pMeta + nBatchSize);
+
 		// Pre-process for predictions
-		uint64_t nNumVals = 0;
+		int64_t nNumVals = 0;
 		CHECK(!outputs.empty());
 		for (auto &out: outputs) {
 			CHECK_EQ(out.dim(), 5); // batch, anc, rows, cols, vals
@@ -111,7 +116,7 @@ private:
 				CHECK_EQ(nNumVals, out.size(4));
 			}
 		}
-		__UpdateAnchorInfo(outputs, imgSize);
+		__UpdateAnchorInfo(outputs);
 		auto tPredVals = __ConcatenateOutputs(outputs); // batch*anc*row*col, val
 		auto nNumBatchBoxes = tPredVals.size(0);
 
@@ -121,7 +126,7 @@ private:
 		m_Alpha.resize(nNumBatchBoxes * nNumVals, 0.f);
 		m_Beta.resize(nNumBatchBoxes * nNumVals, 0.f);
 		__CalcNegativeDelta(tPredVals, truths);
-		__CalcPositiveDelta(tPredVals, truths);
+		__CalcPositiveDelta(tPredVals, truths, batchImgSize);
 
 		// Computing loss and backward
 		std::vector<long> deltaShape = {(long)nNumBatchBoxes, (long)nNumVals};
@@ -153,7 +158,7 @@ private:
 	}
 
 	// To support multiple yolo layers with different number of anchors
-	void __UpdateAnchorInfo(const TENSOR_ARY &outputs, cv::Size imgSize) {
+	void __UpdateAnchorInfo(const TENSOR_ARY &outputs) {
 		std::vector<cv::Size> ancGrids;
 		for (auto &out : outputs) {
 			// Get num_cols and num_rows from shape of outputs
@@ -168,14 +173,14 @@ private:
 		for (uint64_t i = 0; i < m_AncInfos.size(); ++i) {
 			m_AncInfos[i].cells.width = ancGrids[i].width;
 			m_AncInfos[i].cells.height = ancGrids[i].height;
-			m_AncInfos[i].boxSize.width = m_AncSize[i].width / imgSize.width;
-			m_AncInfos[i].boxSize.height = m_AncSize[i].height / imgSize.height;
+			m_AncInfos[i].boxSize.width = m_AncSize[i].width;
+			m_AncInfos[i].boxSize.height = m_AncSize[i].height;
 			m_AncInfos[i].nOffset = m_nImgAncCnt;
 			m_nImgAncCnt += m_AncInfos[i].cells.area();
 		}
 	}
 
-	torch::Tensor __ConcatenateOutputs(const TENSOR_ARY &outputs) {
+	torch::Tensor __ConcatenateOutputs(const TENSOR_ARY &outputs) const {
 		auto nBatchSize = outputs[0].sizes().front();
 		auto nNumVals   = outputs[0].sizes().back();
 		TENSOR_ARY flatOutputs;
@@ -189,7 +194,7 @@ private:
 	}
 
 	void __CalcNegativeDelta(const torch::Tensor &tPredVals,
-			std::vector<std::vector<TRUTH>> &truths) {
+			const std::vector<std::vector<TRUTH>> &truths) {
 		auto nNumBatchPredBoxes = tPredVals.size(0);
 		CHECK_EQ(nNumBatchPredBoxes % truths.size(), 0);
 		auto nNumImagePredBoxes = nNumBatchPredBoxes/ truths.size();
@@ -218,7 +223,8 @@ private:
 		}
 	}
 	void __CalcPositiveDelta(const torch::Tensor &tPredVals,
-			std::vector<std::vector<TRUTH>> &truths) {
+			const std::vector<std::vector<TRUTH>> &truths,
+			const std::vector<cv::Size2f> &batchImgSize) {
 		auto nBatchSize = truths.size();
 		uint64_t nNumVals = tPredVals.sizes().back();
 #ifdef DEBUG_DUMP_DELTA
@@ -230,12 +236,15 @@ private:
 				auto fScale = m_fIoUWeight * (2 - truBox.area());
 				auto truCenter = (truBox.tl() + truBox.br()) / 2;
 
-				auto bestAnc = __GetBestAnchor(truBox);
+				auto bestAnc = __GetBestAnchor(truBox, batchImgSize[b]);
 				auto ancInfo = bestAnc.first;
 				auto iAnc = m_nImgAncCnt * b + bestAnc.second;
+				auto ancSize = ancInfo.boxSize;
+				ancSize.width /= batchImgSize[b].width;
+				ancSize.height /= batchImgSize[b].height;
+
 				auto pAlpha = &m_Alpha[iAnc * nNumVals];
 				auto pBeta = &m_Beta[iAnc * nNumVals];
-
 				pAlpha[0] = -fScale;
 				pAlpha[1] = -fScale;
 				pAlpha[2] = -fScale;
@@ -243,8 +252,8 @@ private:
 				pAlpha[8] = -1;
 				pBeta[0]  = fScale * truCenter.x * ancInfo.cells.width;
 				pBeta[1]  = fScale * truCenter.y * ancInfo.cells.height;
-				pBeta[2]  = fScale * std::log(truBox.width / ancInfo.boxSize.width);
-				pBeta[3]  = fScale * std::log(truBox.height / ancInfo.boxSize.height);
+				pBeta[2]  = fScale * std::log(truBox.width / ancSize.width);
+				pBeta[3]  = fScale * std::log(truBox.height / ancSize.height);
 				pBeta[8]  = 1;
 
 				if (pAlpha[m_nNumBoxVals + truth.second] == 0) {
@@ -260,10 +269,9 @@ private:
 				std::ostringstream oss;
 				auto p = tDump.data_ptr<float>() + iAnc * nNumVals;
 				oss << n++ << " " << p[8];
-				oss << " (" << p[0] << "," << truCenter.x * ancInfo.cells.width << ")";
-				oss << " (" << p[1] << "," << truCenter.y * ancInfo.cells.height << ")";
-				oss << " (" << p[2] << "," << std::log(truBox.width / ancInfo.boxSize.width) << ")";
-				oss << " (" << p[3] << "," << std::log(truBox.height / ancInfo.boxSize.height) << ")";
+				for (int64_t j = 0; j < 4; ++j) {
+					oss << " (" << -pAlpha[j] * p[j] << "," << pBeta[j] << ")";
+				}
 				LOG(INFO) << oss.str();
 #endif
 			}
@@ -271,12 +279,14 @@ private:
 	}
 
 	std::pair<ANCHOR_INFO, int64_t> __GetBestAnchor(
-			const cv::Rect2f &truBox) {
+			const cv::Rect2f &truBox, const cv::Size2f &imgSize) {
 		cv::Point2f truCenter = (truBox.tl() + truBox.br()) / 2;
 		float fBestIoU = 0.f;
 		uint64_t iBestAnchor = 0;
 		for (uint64_t i = 0; i < m_AncInfos.size(); ++i) {
-			const auto &ancSize = m_AncInfos[i].boxSize;
+			auto ancSize = m_AncInfos[i].boxSize;
+			ancSize.width /= imgSize.width;
+			ancSize.height /= imgSize.height;
 			// to align the center of the anchor box to center of the truth
 			cv::Point2f ancTL = truCenter - cv::Point2f(ancSize) / 2;
 			float fIoU = IoU(truBox, cv::Rect2f(ancTL, ancSize));

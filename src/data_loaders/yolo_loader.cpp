@@ -53,6 +53,7 @@ protected:
 
 		TENSOR_ARY images;
 		TENSOR_ARY labels;
+		TENSOR_ARY meta;
 		for (uint64_t b = 0; b < indices.size(); ++b) {
 			bfs::path imagePath(m_ImgList[indices[b]]);
 #ifdef DEBUG_TEST_IMG
@@ -91,12 +92,12 @@ protected:
 			auto tImage = torch::from_blob(img.data,
 					{1, m_OutSize.height, m_OutSize.width, 3});
 			images.emplace_back(tImage.permute({0, 3, 1, 2}).clone());
+
+			float outSize[2] = {(float)m_OutSize.width, (float)m_OutSize.height};
+			meta.emplace_back(torch::from_blob(outSize, {1, 2}).clone());
 		}
-		torch::Tensor tMeta = torch::zeros({2}, torch::TensorOptions(torch::kFloat32));
-		tMeta.data_ptr<float>()[0] = (float)m_OutSize.width;
-		tMeta.data_ptr<float>()[1] = (float)m_OutSize.height;
 		data = TENSOR_ARY{torch::cat(images)};
-		targets = TENSOR_ARY{torch::cat(labels), std::move(tMeta)};
+		targets = TENSOR_ARY{torch::cat(labels), torch::cat(meta)};
 	}
 
 protected:
