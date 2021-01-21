@@ -5,48 +5,6 @@
 
 namespace tfunc = torch::nn::functional;
 
-struct BBOX {
-	BBOX(): p1(0, 0), p2(0, 0), c(-1) {
-	}
-	BBOX(cv::Point2f _p1, cv::Point2f _p2): p1(_p1), p2(_p2), c(-1) {
-	}
-	BBOX(cv::Point2f _p1, cv::Point2f _p2, float _c): p1(_p1), p2(_p2), c(_c) {
-	}
-	BBOX(const BBOX &other): p1(other.p1), p2(other.p2), c(other.c) {
-	}
-	float area() const {
-		return (p2.x - p1.x) * (p2.y - p1.y);
-	}
-	void fix() {
-		if (p1.x > p2.x) {
-			std::swap(p1.x, p2.x);
-		}
-		if (p1.y > p2.y) {
-			std::swap(p1.y, p2.y);
-		}
-	}
-	cv::Point2f p1;
-	cv::Point2f p2;
-	float c;
-};
-
-BBOX operator & (BBOX b1, BBOX b2) {
-	b1.fix();
-	b2.fix();
-	BBOX res({ std::max(b1.p1.x, b2.p1.x), std::max(b1.p1.y, b2.p1.y) },
-			 { std::min(b1.p2.x, b2.p2.x), std::min(b1.p2.y, b2.p2.y) });
-	res.c = b1.c == b2.c ? b1.c : -1;
-	return res;
-}
-
-float IoU(const cv::Rect2f b1, const cv::Rect2f &b2) {
-	float fIOU = (b1 & b2).area();
-	if (fIOU > 0) {
-		fIOU /= b1.area() + b2.area() - fIOU;
-	}
-	return fIOU;
-}
-
 struct ANCHOR_INFO {
 	cv::Size cells;
 	cv::Size2f boxSize;
