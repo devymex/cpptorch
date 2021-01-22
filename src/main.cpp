@@ -162,10 +162,12 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	pModel->InitWeights(InitModuleWeight);
 	if (argLoadLast()) {
 		auto lastState = FindLastState(argStatePath(), argConfName());
-		nInitEpoch = lastState.first;
-		pModel->LoadWeights(lastState.second);
-		if (nInitEpoch > 0) {
-			LOG(INFO) << "Weights loaded from last epoch " << nInitEpoch;
+		if (!lastState.second.empty()) {
+			nInitEpoch = lastState.first;
+			pModel->LoadWeights(lastState.second);
+			if (nInitEpoch > 0) {
+				LOG(INFO) << "Weights loaded from last epoch " << nInitEpoch;
+			}
 		}
 	}
 	if (!bTrainMode) {
