@@ -51,6 +51,15 @@ public:
 		return params;
 	}
 
+	NAMED_PARAMS NamedBuffers() const override {
+		auto jitParams = m_JitModule.named_buffers();
+		NAMED_PARAMS namedBufs;
+		for (const auto &p : jitParams) {
+			namedBufs[p.name] = p.value;
+		}
+		return namedBufs;
+	}
+
 	void InitWeights(WEIGHT_INIT_PROC InitProc) override {
 		if (m_bReinit) {
 			for (const auto &subMod: m_JitModule.named_modules()) {

@@ -29,8 +29,10 @@ public:
 	virtual void TrainMode(bool bTrain = true);
 
 	virtual void SetDevice(torch::Device device);
-	
+
 	virtual NAMED_PARAMS NamedParameters() const;
+
+	virtual NAMED_PARAMS NamedBuffers() const;
 
 	virtual void InitWeights(WEIGHT_INIT_PROC InitProc);
 

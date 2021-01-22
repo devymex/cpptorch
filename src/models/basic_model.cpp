@@ -17,6 +17,14 @@ NAMED_PARAMS BasicModel::NamedParameters() const {
 	return namedParams;
 }
 
+NAMED_PARAMS BasicModel::NamedBuffers() const {
+	NAMED_PARAMS namedBufs;
+	for (const auto &buf : torch::nn::Module::named_buffers()) {
+		namedBufs[buf.key()] = buf.value();
+	}
+	return namedBufs;
+}
+
 PARAM_OPTION BasicModel::GetParamOption(const std::string &strParamName) const {
 	return PARAM_OPTION();
 }
@@ -43,7 +51,16 @@ void BasicModel::InitWeights(WEIGHT_INIT_PROC InitProc) {
 
 void BasicModel::LoadWeights(const std::string &strFilename) {
 	auto loadedParams = ::LoadWeights(strFilename);
-	for (const auto &param: NamedParameters()) {
+	for (auto param: NamedParameters()) {
+		auto iLoaded = loadedParams.find(param.first);
+		if (iLoaded != loadedParams.end()) {
+			auto paramDev = param.second.options().device();
+			param.second.set_data(iLoaded->second.to(paramDev));
+		} else {
+			LOG(INFO) << "Unintialized parameter: " << param.first;
+		}
+	}
+	for (auto param: NamedBuffers()) {
 		auto iLoaded = loadedParams.find(param.first);
 		if (iLoaded != loadedParams.end()) {
 			auto paramDev = param.second.options().device();
@@ -55,5 +72,9 @@ void BasicModel::LoadWeights(const std::string &strFilename) {
 }
 
 void BasicModel::SaveWeights(const std::string &strFilename) const {
-	::SaveWeights(NamedParameters(), strFilename);
+	auto namedParams = NamedParameters();
+	for (auto buf : NamedBuffers()) {
+		namedParams[buf.first] = std::move(buf.second);
+	}
+	::SaveWeights(namedParams, strFilename);
 }
