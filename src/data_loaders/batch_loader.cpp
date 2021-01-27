@@ -98,13 +98,17 @@ void BatchLoader::__LoadBatchToDevice(std::vector<uint64_t> indices,
 		TENSOR_ARY &data, TENSOR_ARY &targets, torch::Device device) {
 	_LoadBatch(std::move(indices), data, targets);
 	for (auto &d : data) {
+		auto opt = torch::TensorOptions().requires_grad(false);
 		if (d.device() != device) {
-			d = d.to(device);
+			opt = opt.device(device);
 		}
+		d = d.to(opt);
 	}
 	for (auto &t : targets) {
+		auto opt = torch::TensorOptions().requires_grad(false);
 		if (t.device() != device) {
-			t = t.to(device);
+			opt = opt.device(device);
 		}
+		t = t.to(opt);
 	}
 }

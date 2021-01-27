@@ -2,8 +2,9 @@
 	"brief": "调试",
 
 	"device": "GPU",
-	"device_id": 1,
+	"device_id": 0,
 	"random_seed": 0,
+	"mode" : "TRAIN",
 
 	"model": {
 		"name": "JIT",
@@ -11,7 +12,11 @@
 		"reinitialize": true
 	},
 	"loss": {
-		"name": "YOLO"
+		"name": "YOLO",
+		"xy_weight": 0.5,
+		"size_weight": 0.5,
+		"conf_weight": 1.0,
+		"prob_weight": 1.0
 	},
 	"train_data": {
 		"name": "YOLO",
@@ -27,7 +32,7 @@
 
 	"optimizer": {
 		"name": "SGD",
-		"learning_rate": 0.0001,
+		"learning_rate": 0.0005,
 		"lr_step_epochs": 100,
 		"lr_step_gamma": 0.5,
 		"weight_decay": 1e-4,
@@ -39,7 +44,8 @@
 
 	"save_state_epochs": 1,
 	"state_path": "experiments/states",
-	"load_last": false,
-	"log_path.ignore": "experiments/log",
-	"log_iters": 10
+	"load_last": true,
+	"log_path": "experiments/log",
+	"log_iters": 10,
+	"test_result_file": "experiments/log/test.res"
 }

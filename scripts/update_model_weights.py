@@ -3,10 +3,10 @@ import io, argparse, torch
 parser = argparse.ArgumentParser()
 parser.add_argument('--script_model', nargs=1, required=True, type=str,
 					help='Script module for export')
-parser.add_argument('--weight_file', nargs=1, required=False, type=str,
+parser.add_argument('--weight_file', nargs=1, required=True, type=str,
 					help='Override weights by specific file')
-parser.add_argument('--output_file', nargs=1, required=False, type=str,
-					help='Override weights by specific file')
+parser.add_argument('--output_file', nargs=1, required=True, type=str,
+					help='')
 args = parser.parse_args()
 
 def load_weights(model):
@@ -21,6 +21,11 @@ def load_weights(model):
 		param.requires_grad = False
 		if name in loaded_params:
 			param.copy_(loaded_params[name])
+			print('Loaded', name)
+	for name, buf in model.named_buffers():
+		if name in loaded_params:
+			buf.copy_(loaded_params[name])
+			print('Loaded', name)
 
 model = torch.jit.load(args.script_model[0])
 model.cpu()

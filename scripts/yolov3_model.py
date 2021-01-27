@@ -130,16 +130,16 @@ class YoloLayer(nn.Module):
             self.reset_input_size(input, image_size)
         # input: batch*anc*vals*h*w -> vals*batch*anc*h*w
         input = input.reshape(self.calc_shape).permute(2, 0, 1, 3, 4)
-        box_cx = torch.sigmoid(input[0:1]) + self.anc_off_c # sigmoid(px) + c
-        box_cy = torch.sigmoid(input[1:2]) + self.anc_off_r # sigmoid(py) + r
+        box_cx = torch.sigmoid(input[0:1]) # sigmoid(px) + c
+        box_cy = torch.sigmoid(input[1:2]) # sigmoid(py) + r
         box_w = input[2:3]
         box_h = input[3:4]
         conf_probs = torch.sigmoid(input[4:]) # objectness and probabilities
 
         box_ws = torch.exp(box_w) * self.scale_w # exp(pw) * anc_w / img_w
         box_hs = torch.exp(box_h) * self.scale_h # exp(ph) * anc_h / img_h
-        box_x1 = box_cx / self.anc_cols - box_ws / 2
-        box_y1 = box_cy / self.anc_rows - box_hs / 2
+        box_x1 = (box_cx + self.anc_off_c) / self.anc_cols - box_ws / 2
+        box_y1 = (box_cy + self.anc_off_r) / self.anc_rows - box_hs / 2
         box_x2 = box_x1 + box_ws # x2 = x1 + w
         box_y2 = box_y1 + box_hs # y2 = y1 + h
 
@@ -237,16 +237,26 @@ if not path.exists(weight_filename):
     print('Downloading weights file ...')
     url_req.urlretrieve(weight_file_url, weight_filename)
 
+# Create model and do inference
+model = Yolov3Model(num_cls, input_size, anchors, masks)
+#model = torch.jit.load('./test/yolov3_ft.pth')
+load_params_file(weight_filename, model)
+
+# Testing for script and trace
+model.train()
+script_model = torch.jit.script(model)
+# model.eval()
+# trace_model = torch.jit.trace(model, data)
+torch.jit.save(script_model, path.join(data_path, 'yolov3.pth'))
+
 # Load image data and do preprocessing
 img = cv2.imread(image_filename, cv2.IMREAD_COLOR)
+# img = cv2.imread('/mnt/data/prjdata/voc/VOCdevkit/VOC2007/JPEGImages/000012.jpg')
 data = cv2.cvtColor(cv2.resize(img, input_size), cv2.COLOR_RGB2BGR)
 data = torch.tensor(data) / 255.0
 data = data.permute(2, 0, 1).reshape(1, 3, input_size[1], input_size[0])
 
-# Create model and do inference
-model = Yolov3Model(num_cls, input_size, anchors, masks)
 model.eval()
-load_params_file(weight_filename, model)
 model_outputs = model.forward(data)
 reshaped_outputs = []
 for output in model_outputs:
@@ -264,13 +274,14 @@ for predict in predict:
         conf = boxes[4]
         if conf > conf_thres:
             all_boxes.append(boxes.view(1, -1))
-    all_boxes = nms(torch.cat(all_boxes))
-    cls_ids = torch.argmax(all_boxes[:, 5:], dim=1)
-    for box_idx, best_cls_id in enumerate(cls_ids):
-        if all_boxes[box_idx, 5 + best_cls_id] > conf_thres:
-            box = torch.cat((all_boxes[box_idx, :4],
-                torch.tensor([np.float32(best_cls_id)])))
-            best_boxes.append(box)
+    if len(all_boxes) > 0:
+        all_boxes = nms(torch.cat(all_boxes))
+        cls_ids = torch.argmax(all_boxes[:, 5:], dim=1)
+        for box_idx, best_cls_id in enumerate(cls_ids):
+            if all_boxes[box_idx, 5 + best_cls_id] > conf_thres:
+                box = torch.cat((all_boxes[box_idx, :4],
+                    torch.tensor([np.float32(best_cls_id)])))
+                best_boxes.append(box)
 
 img_size = (img.shape[1], img.shape[0])
 for box in best_boxes: # Draw and save precition results
@@ -278,10 +289,3 @@ for box in best_boxes: # Draw and save precition results
     pt2 = (int(box[2] * img_size[0]), int(box[3] * img_size[1]))
     cv2.rectangle(img, pt1, pt2, (0, 255, 0))
 cv2.imwrite(path.join(data_path, 'predict.png'), img)
-
-# Testing for script and trace
-model.train()
-script_model = torch.jit.script(model)
-model.eval()
-trace_model = torch.jit.trace(model, data)
-torch.jit.save(script_model, path.join(data_path, 'yolov3.pth'))

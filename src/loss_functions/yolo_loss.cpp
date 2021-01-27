@@ -1,6 +1,8 @@
 #include <algorithm>
+#include <set>
 #include <opencv2/opencv.hpp>
 #include "../creator.hpp"
+#include "../argman.hpp"
 #include "basic_loss.hpp"
 
 namespace tfunc = torch::nn::functional;
@@ -24,30 +26,50 @@ class YOLOLoss : public BasicLoss {
 	const uint64_t m_nNumBoxVals = 9;
 	const float m_fNegProbThres = 0.25f;
 	const float m_fNegIgnoreIoU = 0.7f;
-	const float m_fIoUWeight = 0.75f;
 	const std::vector<cv::Size2f> m_AncSize = {
 		cv::Size2f(116,90), cv::Size2f(156,198), cv::Size2f(373,326),
 		cv::Size2f(30,61),  cv::Size2f(62,45),   cv::Size2f(59,119),
 		cv::Size2f(10,13),  cv::Size2f(16,30),   cv::Size2f(33,23)
 	};
+	float m_fXYWeight = 1.f;
+	float m_fSizeWeight = 1.f;
+	float m_fConfWeight = 1.f;
+	float m_fProbWeight = 1.f;
 
 	std::vector<ANCHOR_INFO> m_AncInfos;
 	uint64_t m_nImgAncCnt = 0; // amount of different size anchors in an image
-	std::vector<float> m_Alpha;
-	std::vector<float> m_Beta;
+
+	torch::nn::BCELoss m_BCELoss;
+	torch::nn::MSELoss m_MSELoss;
 
 public:
+	void Initialize(const nlohmann::json &jConf) override {
+		BasicLoss::Initialize(jConf);
+		ArgMan argMan;
+		Arg<float> argXYWeight("xy_weight", 1.0f, argMan);
+		Arg<float> argConfWeight("conf_weight", 1.0f, argMan);
+		Arg<float> argSizeWeight("size_weight", 1.0f, argMan);
+		Arg<float> argProbWeight("prob_weight", 1.0f, argMan);
+		ParseArgsFromJson(jConf, argMan);
+
+		m_fXYWeight = argXYWeight();
+		m_fConfWeight = argConfWeight();
+		m_fSizeWeight = argSizeWeight();
+		m_fProbWeight = argProbWeight();
+
+		m_BCELoss->options.reduction() = torch::kNone;
+		m_MSELoss->options.reduction() = torch::kNone;
+	}
+
 	float Backward(TENSOR_ARY outputs, TENSOR_ARY targets) override {
-		auto tLoss = __CalcLoss(outputs, targets);
-		float fLoss = tLoss.item<float>();
-		tLoss.backward();
-		return fLoss;
+		auto [tLoss, nNumAncs] = __CalcLoss(outputs, targets);
+		(tLoss / nNumAncs).backward();
+		return tLoss.item<float>();
 	}
 
 	float Evaluate(TENSOR_ARY outputs, TENSOR_ARY targets) override {
-		auto tLoss = __CalcLoss(outputs, targets);
-		float fLoss = tLoss.item<float>();
-		return fLoss;
+		auto [tLoss, nNumAncs] = __CalcLoss(outputs, targets);
+		return tLoss.item<float>();
 	}
 
 	std::string FlushResults() {
@@ -55,7 +77,7 @@ public:
 	}
 
 private:
-	torch::Tensor __CalcLoss(const TENSOR_ARY &outputs,
+	std::pair<torch::Tensor, int64_t> __CalcLoss(const TENSOR_ARY &outputs,
 			const TENSOR_ARY &targets) {
 		// Preprocess for truth-boxes
 		CHECK_EQ(targets.size(), 2);
@@ -67,8 +89,8 @@ private:
 		torch::Tensor tMeta = targets[1].cpu().contiguous();
 		CHECK_EQ(tMeta.dim(), 2);
 		CHECK_EQ(tMeta.size(0), nBatchSize);
-		auto pMeta = (cv::Size2f*)tMeta.data_ptr<float>();
-		std::vector<cv::Size2f> batchImgSize(pMeta, pMeta + nBatchSize);
+		auto pMeta = (cv::Size*)tMeta.data_ptr<int32_t>();
+		std::vector<cv::Size> batchImgSize(pMeta, pMeta + nBatchSize);
 
 		// Pre-process for predictions
 		int64_t nNumVals = 0;
@@ -84,22 +106,11 @@ private:
 		}
 		__UpdateAnchorInfo(outputs);
 		auto tPredVals = __ConcatenateOutputs(outputs); // batch*anc*row*col, val
-		auto nNumBatchBoxes = tPredVals.size(0);
-
-		// Calculate negative and positive delta(alpha and beta)
-		m_Alpha.clear();
-		m_Beta.clear();
-		m_Alpha.resize(nNumBatchBoxes * nNumVals, 0.f);
-		m_Beta.resize(nNumBatchBoxes * nNumVals, 0.f);
-		__CalcNegativeDelta(tPredVals, truths);
-		__CalcPositiveDelta(tPredVals, truths, batchImgSize);
-
-		// Computing loss and backward
-		std::vector<long> deltaShape = {(long)nNumBatchBoxes, (long)nNumVals};
-		auto optNoGrad = torch::TensorOptions(c10::requires_grad(false));
-		auto tAlpha = torch::from_blob(m_Alpha.data(), deltaShape, optNoGrad);
-		auto tBeta = torch::from_blob(m_Beta.data(), deltaShape, optNoGrad);
-		return torch::square(tPredVals * tAlpha + tBeta).sum() / (long)nNumVals;
+		auto tNegLoss = __NegConfLoss(tPredVals, truths);
+		auto tPosLoss = __PosLoss(tPredVals, truths, batchImgSize);
+		LOG(INFO) << "NegLoss: " << tNegLoss.item<float>()
+				  << ", PosLoss: " << tPosLoss.item<float>();
+		return std::make_pair(tNegLoss + tPosLoss, tPredVals.size(0));
 	}
 
 	std::vector<std::vector<TRUTH>> __ExtractTruthBoxes(const torch::Tensor &tTruth) {
@@ -159,93 +170,150 @@ private:
 		return torch::cat(std::move(flatOutputs), 0).cpu();
 	}
 
-	void __CalcNegativeDelta(const torch::Tensor &tPredVals,
+	torch::Tensor __NegConfLoss(const torch::Tensor &tPredVals,
 			const std::vector<std::vector<TRUTH>> &truths) {
-		auto nNumBatchPredBoxes = tPredVals.size(0);
-		CHECK_EQ(nNumBatchPredBoxes % truths.size(), 0);
-		auto nNumImagePredBoxes = nNumBatchPredBoxes/ truths.size();
+		auto nBatchSize = truths.size();
+		auto nNumBatchAncs = tPredVals.size(0);
+		auto nNumImageAncs = nNumBatchAncs / nBatchSize;
+		auto nNumVals = tPredVals.size(1);
+		CHECK_EQ(nNumBatchAncs % nBatchSize, 0);
+
+		auto tPredBoxes = tPredVals.slice(1, 4, 8).contiguous();
+		auto tPredConf = tPredVals.slice(1, 8, 9);
+		auto tPredProbs = tPredVals.slice(1, 9, nNumVals).detach();
+		auto pPredBoxes = tPredBoxes.data_ptr<float>(); // [x1, y1, x2, y2]
 
 		// set mask=1 for all negative boxes whose maximum probs greater than
 		//    m_fNegProbThres
-		auto tPredProbs = tPredVals.slice(1, m_nNumBoxVals);
 		auto tNegMask = torch::gt(torch::amax(tPredProbs, 1), m_fNegProbThres);
 		tNegMask = tNegMask.to(torch::kInt32).contiguous();
-
-		auto tPredBoxes = tPredVals.slice(1, 4, 8).contiguous();
-		auto pPredBoxes = tPredBoxes.data_ptr<float>(); // [x1, y1, x2, y2]
 		auto pNegMask = tNegMask.data_ptr<int32_t>();
-		for (uint64_t i = 0; i < nNumBatchPredBoxes; ++i) {
+
+		for (uint64_t i = 0; i < nNumBatchAncs; ++i) {
 			if (pNegMask[i]) {
 				auto pTLBR = (cv::Point2f*)(pPredBoxes + i * 4);
 				cv::Rect2f predBox = { pTLBR[0], pTLBR[1] };
 				auto fBestIOU = 0.f;
-				for (auto &truth : truths[i / nNumImagePredBoxes]) {
+				for (auto &truth : truths[i / nNumImageAncs]) {
 					fBestIOU = std::max(fBestIOU, IoU(predBox, truth.first));
 				}
-				if (fBestIOU <= m_fNegIgnoreIoU) {
-					m_Alpha[i * tPredVals.sizes().back() + 8] = -1;
+				if (fBestIOU > m_fNegIgnoreIoU) {
+					pNegMask[i] = 0;
 				}
 			}
 		}
-	}
-	void __CalcPositiveDelta(const torch::Tensor &tPredVals,
-			const std::vector<std::vector<TRUTH>> &truths,
-			const std::vector<cv::Size2f> &batchImgSize) {
-		auto nBatchSize = truths.size();
-		uint64_t nNumVals = tPredVals.sizes().back();
-#ifdef DEBUG_DUMP_DELTA
-		auto tDump = tPredVals.contiguous();
+		auto tNegConfLoss = m_BCELoss(tPredConf, torch::zeros_like(tPredConf));
+		tNegConfLoss = tNegMask * m_fConfWeight * tNegConfLoss.view(-1);
+#ifdef DEBUG_DUMP_YOLO_DELTA
+		float fNegConf = 0.f;
+		uint64_t nCnt = 0;
+		for (uint64_t i = 0; i < nNumBatchAncs; ++i) {
+			if (pNegMask[i]) {
+				fNegConf += tPredConf[i].item<float>();
+				++nCnt;
+			}
+		}
+		LOG(INFO) << "NegConf: " << fNegConf / nCnt << " * " << nCnt
+				  << ": " << tNegConfLoss.sum().item<float>();
 #endif
+		return tNegConfLoss.sum();
+	}
+
+	torch::Tensor __PosLoss(torch::Tensor &tPredVals,
+			const std::vector<std::vector<TRUTH>> &truths,
+			const std::vector<cv::Size> &batchImgSize) {
+		auto nBatchSize = truths.size();
+		auto nNumBatchAncs = tPredVals.size(0);
+		auto nNumVals = tPredVals.sizes().back();
+		auto nNumClasses = nNumVals - 9;
+
+		std::vector<int64_t> posIndices;
+		std::vector<float> xyTruth, xyScale, whTruth, whScale, probsTruth;
 		for (uint64_t b = 0; b < nBatchSize; ++b) {
 			for (auto &truth: truths[b]) {
 				auto &truBox = truth.first;
-				auto fScale = m_fIoUWeight * (2 - truBox.area());
-				auto truCenter = (truBox.tl() + truBox.br()) / 2;
 
-				auto bestAnc = __GetBestAnchor(truBox, batchImgSize[b]);
-				auto ancInfo = bestAnc.first;
-				auto iAnc = m_nImgAncCnt * b + bestAnc.second;
-				auto ancSize = ancInfo.boxSize;
-				ancSize.width /= batchImgSize[b].width;
-				ancSize.height /= batchImgSize[b].height;
-
-				auto pAlpha = &m_Alpha[iAnc * nNumVals];
-				auto pBeta = &m_Beta[iAnc * nNumVals];
-				pAlpha[0] = -fScale;
-				pAlpha[1] = -fScale;
-				pAlpha[2] = -fScale;
-				pAlpha[3] = -fScale;
-				pAlpha[8] = -1;
-				pBeta[0]  = fScale * truCenter.x * ancInfo.cells.width;
-				pBeta[1]  = fScale * truCenter.y * ancInfo.cells.height;
-				pBeta[2]  = fScale * std::log(truBox.width / ancSize.width);
-				pBeta[3]  = fScale * std::log(truBox.height / ancSize.height);
-				pBeta[8]  = 1;
-
-				if (pAlpha[m_nNumBoxVals + truth.second] == 0) {
-					for (uint64_t i = 0; i < nNumVals - m_nNumBoxVals; ++i) {
-						pAlpha[m_nNumBoxVals + i] = -1;
-					}
+				auto [ancInfo, ancPos] = __GetBestAnchor(truBox, batchImgSize[b]);
+				auto iAncInBatch = m_nImgAncCnt * b + ancInfo.nOffset +
+						ancPos.y * ancInfo.cells.width + ancPos.x;
+				auto nAncOff = std::find(posIndices.begin(), posIndices.end(),
+						iAncInBatch) - posIndices.begin();
+				if (nAncOff == posIndices.size()) { // if not exists, push new
+					xyTruth.resize(xyTruth.size() + 2);
+					xyScale.resize(xyScale.size() + 2);
+					whTruth.resize(whTruth.size() + 2);
+					whScale.resize(whScale.size() + 2);
+					probsTruth.resize(probsTruth.size() + nNumClasses, 0);
+					posIndices.push_back(iAncInBatch);
 				}
-				pAlpha[m_nNumBoxVals + truth.second] = -1;
-				pBeta[m_nNumBoxVals + truth.second] = 1;
-
-				static int n = 0;
-#ifdef DEBUG_DUMP_DELTA
-				std::ostringstream oss;
-				auto p = tDump.data_ptr<float>() + iAnc * nNumVals;
-				oss << n++ << " " << p[8];
-				for (int64_t j = 0; j < 4; ++j) {
-					oss << " (" << -pAlpha[j] * p[j] << "," << pBeta[j] << ")";
-				}
-				LOG(INFO) << oss.str();
-#endif
+				__CalcAnchorCoordTruthScale(truBox, batchImgSize[b], ancInfo,
+						&xyTruth[nAncOff * 2], &xyScale[nAncOff * 2],
+						&whTruth[nAncOff * 2], &whScale[nAncOff * 2]
+						);
+				probsTruth[nAncOff * nNumClasses + truth.second] = 1;
 			}
 		}
+		int64_t nNumPosAncs = (int64_t)posIndices.size();
+		auto optNoGrad = torch::TensorOptions(torch::requires_grad(false));
+		auto tPosIndices = torch::from_blob(posIndices.data(),
+				{nNumPosAncs}, optNoGrad.dtype(torch::kInt64)).clone();
+
+		auto tSelAncs = torch::index_select(tPredVals, 0, tPosIndices);
+		auto tPosXY = tSelAncs.slice(1, 0, 2);
+		auto tPosWH = tSelAncs.slice(1, 2, 4);
+		auto tPosConf = tSelAncs.slice(1, 8, 9).view(-1);
+		auto tPosProbs = tSelAncs.slice(1, 9, nNumVals);
+
+		auto tXYTruth = torch::from_blob(xyTruth.data(),
+				{nNumPosAncs, 2}, optNoGrad).clone();
+		auto tWHTruth = torch::from_blob(whTruth.data(),
+				{nNumPosAncs, 2}, optNoGrad).clone();
+		auto tXYScale = torch::from_blob(xyScale.data(),
+				{nNumPosAncs, 2}, optNoGrad).clone();
+		auto tWHScale = torch::from_blob(whScale.data(),
+				{nNumPosAncs, 2}, optNoGrad).clone();
+		auto tProbsTruth = torch::from_blob(probsTruth.data(),
+				{nNumPosAncs, nNumClasses}, optNoGrad).clone();
+
+		auto tXYLoss = tXYScale * m_MSELoss(tPosXY, tXYTruth);
+		auto tWHLoss = tWHScale * m_MSELoss(tPosWH, tWHTruth);
+		auto tConfLoss = m_BCELoss(tPosConf, torch::ones({nNumPosAncs}, optNoGrad));
+		auto tProbsLoss = m_fProbWeight * m_BCELoss(tPosProbs, tProbsTruth);
+
+#ifdef DEBUG_DUMP_YOLO_DELTA
+		auto nPosProbCnt = std::count(probsTruth.begin(), probsTruth.end(), 1);
+		auto nNegProbCnt = std::count(probsTruth.begin(), probsTruth.end(), 0);
+		auto tMeanPosConf = tPosConf.sum() / nNumPosAncs;
+		auto tMeanPosProb = (tPosProbs * tProbsTruth).sum() / nPosProbCnt;
+		auto tMeanNegProb = (tPosProbs * (1 - tProbsTruth)).sum() / nNegProbCnt;
+		auto tMeanXY = tPosXY.sum(0) / nNumPosAncs;
+		auto tMeanWH = tPosWH.sum(0) / nNumPosAncs;
+		auto tXYLossSum = tXYLoss.sum(0);
+		auto tWHLossSum = tWHLoss.sum(0);
+		auto tConfLossSum = tConfLoss.sum(0);
+		auto tProbsLossSum = tProbsLoss.sum();
+		std::ostringstream oss;
+		oss << std::setprecision(5) << std::fixed;
+		oss << "\nX: " << tMeanXY[0].item<float>() << "->" << xyTruth[0] << " * "
+				<< tXYScale[0][0].item<float>() << ": " << tXYLossSum[0].item<float>();
+		oss << "\nY: " << tMeanXY[1].item<float>() << "->" << xyTruth[1] << " * "
+				<< tXYScale[0][1].item<float>() << ": " << tXYLossSum[1].item<float>();
+		oss << "\nW: " << tMeanWH[0].item<float>() << "->" << whTruth[0] << " * "
+				<< tWHScale[0][0].item<float>() << ": " << tWHLossSum[0].item<float>();
+		oss << "\nH: " << tMeanWH[1].item<float>() << "->" << whTruth[1] << " * "
+				<< tWHScale[0][1].item<float>() << ": " << tWHLossSum[1].item<float>();
+		oss << "\nPosConf: " << tMeanPosConf.item<float>() << ": "
+				<< tConfLossSum.item<float>();
+		oss << "\nProbs: " << tMeanPosProb.item<float>() << ", "
+				<< tMeanNegProb.item<float>() << ": " << tProbsLossSum.item<float>();
+		LOG(INFO) << oss.str();
+#endif
+
+		return tProbsLoss.sum() + tConfLoss.sum() + tXYLoss.sum() + tWHLoss.sum();
 	}
 
-	std::pair<ANCHOR_INFO, int64_t> __GetBestAnchor(
-			const cv::Rect2f &truBox, const cv::Size2f &imgSize) {
+	std::pair<ANCHOR_INFO, cv::Point> __GetBestAnchor(
+			const cv::Rect2f &truBox, const cv::Size &imgSize) {
 		cv::Point2f truCenter = (truBox.tl() + truBox.br()) / 2;
 		float fBestIoU = 0.f;
 		uint64_t iBestAnchor = 0;
@@ -262,11 +330,27 @@ private:
 			}
 		}
 		const auto &bestAnc = m_AncInfos[iBestAnchor];
-		auto c = uint64_t(truCenter.x * bestAnc.cells.width);
-		auto r = uint64_t(truCenter.y * bestAnc.cells.height);
-		auto iBox = r * bestAnc.cells.width + c;
-		CHECK_LT(iBox, bestAnc.cells.area());
-		return std::make_pair(bestAnc, bestAnc.nOffset + iBox);
+		cv::Point ancPos = {int(truCenter.x * bestAnc.cells.width),
+							int(truCenter.y * bestAnc.cells.height)};
+		return std::make_pair(bestAnc, ancPos);
+	}
+
+	void __CalcAnchorCoordTruthScale(const cv::Rect2f &truBox, cv::Size imgSize,
+			const ANCHOR_INFO &ancInfo, float *pXYTruth, float *pXYScale,
+			float *pWHTruth, float *pWHScale) {
+		auto truCenter = (truBox.tl() + truBox.br()) / 2;
+		pXYTruth[0] = truCenter.x * ancInfo.cells.width;
+		pXYTruth[1] = truCenter.y * ancInfo.cells.height;
+		pXYTruth[0] -= (int64_t)pXYTruth[0];
+		pXYTruth[1] -= (int64_t)pXYTruth[1];
+		pXYScale[0] = pXYScale[1] = m_fXYWeight * (2 - truBox.area());
+
+		auto ancSize = ancInfo.boxSize;
+		ancSize.width /= imgSize.width;
+		ancSize.height /= imgSize.height;
+		pWHTruth[0] = std::log(truBox.width / ancSize.width);
+		pWHTruth[1] = std::log(truBox.height / ancSize.height);
+		pWHScale[0] = pWHScale[1] = m_fSizeWeight * (2 - truBox.area());
 	}
 };
 

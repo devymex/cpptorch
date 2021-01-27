@@ -56,7 +56,7 @@ protected:
 		TENSOR_ARY meta;
 		for (uint64_t b = 0; b < indices.size(); ++b) {
 			bfs::path imagePath(m_ImgList[indices[b]]);
-#ifdef DEBUG_TEST_IMG
+#ifdef DEBUG_LOAD_TEST_IMG
 			imagePath = bfs::path("/mnt/data/prjdata/voc/VOCdevkit/VOC2007/JPEGImages/000012.jpg");
 #endif
 			CHECK(imagePath.parent_path().leaf().string() == "JPEGImages");
@@ -93,8 +93,8 @@ protected:
 					{1, m_OutSize.height, m_OutSize.width, 3});
 			images.emplace_back(tImage.permute({0, 3, 1, 2}).clone());
 
-			float outSize[2] = {(float)m_OutSize.width, (float)m_OutSize.height};
-			meta.emplace_back(torch::from_blob(outSize, {1, 2}).clone());
+			meta.emplace_back(torch::from_blob(&m_OutSize, {1, 2},
+				torch::TensorOptions(torch::kInt32)).clone());
 		}
 		data = TENSOR_ARY{torch::cat(images)};
 		targets = TENSOR_ARY{torch::cat(labels), torch::cat(meta)};
