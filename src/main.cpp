@@ -1,6 +1,7 @@
 #include <ctime>
 #include <fstream>
 #include <iomanip>
+#include <thread>
 
 #include <boost/filesystem.hpp>
 #include <boost/regex.hpp>
@@ -12,6 +13,7 @@
 #include "argman.hpp"
 #include "json.hpp"
 #include "creator.hpp"
+#include "ctimer.hpp"
 #include "data_loaders/batch_loader.hpp"
 #include "loss_functions/basic_loss.hpp"
 #include "optimizers/basic_optimizer.hpp"
@@ -76,6 +78,7 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	Arg<int32_t> argRandomSeed("random_seed", -1);
 	Arg<uint64_t> argMaxEpoch("max_epoch", 10);
 	Arg<uint64_t> argBatchSize("batch_size", 32);
+	Arg<uint64_t> argThreadNum("thread_num", 0);
 	Arg<std::string> argLogPath("log_path");
 	Arg<uint64_t> argLogIters("log_iters", 0);
 	Arg<std::string> argStatePath("state_path");
@@ -143,11 +146,18 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	torch::Device device = torch::kCPU;
 	if (argDevice() != "CPU") {
 		if (argDevice() == "GPU" || argDevice() == "CUDA") {
+			CHECK(torch::cuda::is_available());
 			device = torch::Device(torch::kCUDA, argDeviceID());
 		} else {
 			LOG(FATAL) << "Unrecognized device: " << argDevice();
 		}
 	}
+	auto nNumThread = argThreadNum();
+	if (nNumThread <= 0) {
+		nNumThread = std::thread::hardware_concurrency();
+	}
+	torch::init_num_threads();
+	torch::set_num_threads(nNumThread);
 
 	// Data Loader Preparation
 	// -------------------------------------------------------------------------
@@ -191,10 +201,21 @@ int main(int nArgCnt, const char *ppArgs[]) {
 		for (uint64_t nIter = 1; bTrainMode && pTrainLdr->GetBatch(
 				argBatchSize(), data, targets, device); ++nIter) {
 			pOptimizer->ZeroGrad();
+			CTimer t;
+			auto stream = c10::cuda::getCurrentCUDAStream();
+			cudaStreamSynchronize(stream);
+			t.Reset(0);
 			TENSOR_ARY outputs = pModel->Forward(std::move(data));
+			cudaStreamSynchronize(stream);
+			t.Reset(1);
 			float fLoss = pLoss->Backward(std::move(outputs), std::move(targets));
+			cudaStreamSynchronize(stream);
+			t.Reset(2);
 			fTrainLossSum += fLoss;
 			pOptimizer->IterStep();
+			cudaStreamSynchronize(stream);
+			t.Reset(3);
+			LOG(INFO) << t.Format();
 			if (argLogIters() > 0 && nIter % argLogIters() == 0) {
 				LOG(INFO) << "train_iter=" << nIter
 						  << ", loss=" << fLoss / argBatchSize();

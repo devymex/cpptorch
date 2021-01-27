@@ -75,5 +75,6 @@
 		"*.cuh": "cpp",
 		"strstream": "cpp",
 		"cfenv": "cpp"
-	}
+	},
+	"python.pythonPath": "/usr/local/bin/python3.8"
 }

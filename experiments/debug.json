@@ -2,7 +2,7 @@
 	"brief": "调试",
 
 	"device": "GPU",
-	"device_id": 0,
+	"device_id": 1,
 	"random_seed": 0,
 	"mode" : "TRAIN",
 

@@ -3,6 +3,7 @@
 #include <opencv2/opencv.hpp>
 #include "../creator.hpp"
 #include "../argman.hpp"
+#include "../ctimer.hpp"
 #include "basic_loss.hpp"
 
 namespace tfunc = torch::nn::functional;
@@ -108,8 +109,10 @@ private:
 		auto tPredVals = __ConcatenateOutputs(outputs); // batch*anc*row*col, val
 		auto tNegLoss = __NegConfLoss(tPredVals, truths);
 		auto tPosLoss = __PosLoss(tPredVals, truths, batchImgSize);
-		LOG(INFO) << "NegLoss: " << tNegLoss.item<float>()
-				  << ", PosLoss: " << tPosLoss.item<float>();
+#ifdef DEBUG_DUMP_YOLO_DELTA
+		LOG(INFO) << "Loss: Neg(" << tNegLoss.item<float>()
+				  << "), Pos(" << tPosLoss.item<float>() << ")";
+#endif
 		return std::make_pair(tNegLoss + tPosLoss, tPredVals.size(0));
 	}
 
@@ -205,16 +208,15 @@ private:
 		auto tNegConfLoss = m_BCELoss(tPredConf, torch::zeros_like(tPredConf));
 		tNegConfLoss = tNegMask * m_fConfWeight * tNegConfLoss.view(-1);
 #ifdef DEBUG_DUMP_YOLO_DELTA
-		float fNegConf = 0.f;
-		uint64_t nCnt = 0;
-		for (uint64_t i = 0; i < nNumBatchAncs; ++i) {
-			if (pNegMask[i]) {
-				fNegConf += tPredConf[i].item<float>();
-				++nCnt;
-			}
-		}
-		LOG(INFO) << "NegConf: " << fNegConf / nCnt << " * " << nCnt
-				  << ": " << tNegConfLoss.sum().item<float>();
+		int32_t nCnt = tNegMask.sum().item<int32_t>();
+		float fNegConfSum = (tNegMask * tPredConf.view(-1)).sum().item<float>();
+		float fNegConfLossSum = tNegConfLoss.sum().item<float>();
+		std::ostringstream oss;
+		oss << std::setprecision(5) << std::fixed << std::left;
+		oss << "NegConf: " << std::setw(8) << fNegConfSum / nCnt
+			<< std::setw(8) << nCnt << std::setw(8)
+			<< fNegConfLossSum;
+		LOG(INFO) << oss.str();
 #endif
 		return tNegConfLoss.sum();
 	}
@@ -275,7 +277,7 @@ private:
 		auto tProbsTruth = torch::from_blob(probsTruth.data(),
 				{nNumPosAncs, nNumClasses}, optNoGrad).clone();
 
-		auto tXYLoss = tXYScale * m_MSELoss(tPosXY, tXYTruth);
+		auto tXYLoss = tXYScale * m_BCELoss(tPosXY, tXYTruth);
 		auto tWHLoss = tWHScale * m_MSELoss(tPosWH, tWHTruth);
 		auto tConfLoss = m_BCELoss(tPosConf, torch::ones({nNumPosAncs}, optNoGrad));
 		auto tProbsLoss = m_fProbWeight * m_BCELoss(tPosProbs, tProbsTruth);
@@ -293,7 +295,12 @@ private:
 		auto tConfLossSum = tConfLoss.sum(0);
 		auto tProbsLossSum = tProbsLoss.sum();
 		std::ostringstream oss;
-		oss << std::setprecision(5) << std::fixed;
+		oss << std::setprecision(5) << std::fixed << std::left;
+		oss << "PosConf: " << std::setw(8) << tMeanPosConf.item<float>()
+			<< std::setw(8) << nNumPosAncs << std::setw(8)
+			<< tConfLossSum.item<float>();
+		oss << "\nProbs: " << tMeanPosProb.item<float>() << ", "
+				<< tMeanNegProb.item<float>() << ": " << tProbsLossSum.item<float>();
 		oss << "\nX: " << tMeanXY[0].item<float>() << "->" << xyTruth[0] << " * "
 				<< tXYScale[0][0].item<float>() << ": " << tXYLossSum[0].item<float>();
 		oss << "\nY: " << tMeanXY[1].item<float>() << "->" << xyTruth[1] << " * "
@@ -302,10 +309,6 @@ private:
 				<< tWHScale[0][0].item<float>() << ": " << tWHLossSum[0].item<float>();
 		oss << "\nH: " << tMeanWH[1].item<float>() << "->" << whTruth[1] << " * "
 				<< tWHScale[0][1].item<float>() << ": " << tWHLossSum[1].item<float>();
-		oss << "\nPosConf: " << tMeanPosConf.item<float>() << ": "
-				<< tConfLossSum.item<float>();
-		oss << "\nProbs: " << tMeanPosProb.item<float>() << ", "
-				<< tMeanNegProb.item<float>() << ": " << tProbsLossSum.item<float>();
 		LOG(INFO) << oss.str();
 #endif
 

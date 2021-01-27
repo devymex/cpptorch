@@ -47,26 +47,49 @@ uint16_t Num2HexWord(uint8_t n) {
 	return (uint16_t(hi << 8) | uint16_t(lo));
 }
 
+template<typename _IS, typename _Elem>
+uint64_t LoadBuffer(_IS &inStream, std::vector<_Elem> &buf) {
+	uint64_t nBufLen = 0;
+	CHECK(inStream.read((char*)&nBufLen, sizeof(nBufLen)));
+	CHECK_EQ(nBufLen % sizeof(_Elem), 0);
+	buf.resize(nBufLen / sizeof(_Elem));
+	CHECK(inStream.read((char*)buf.data(), nBufLen));
+	return nBufLen;
+}
+
+template<typename _OS, typename _Elem>
+uint64_t SaveBuffer(_OS &outStream, const std::vector<_Elem> &buf) {
+	uint64_t nBufLen = buf.size() * sizeof(_Elem);
+	CHECK(outStream.write((char*)&nBufLen, sizeof(nBufLen)));
+	if (nBufLen > 0) {
+		CHECK(outStream.write((char*)buf.data(), nBufLen));
+	}
+	return nBufLen;
+}
+
+std::pair<std::string, std::vector<char>> LoadNamedBuffer(std::ifstream &inStream) {
+	std::vector<char> name, buf;
+	CHECK_GT(LoadBuffer(inStream, name), 0);
+	CHECK_GT(LoadBuffer(inStream, buf), 0);
+	std::string strName(name.begin(), name.end());
+	return std::make_pair(std::move(strName), std::move(buf));
+}
+
+void SaveNamedBuffer(std::ofstream &outStream, const std::string &strName,
+		const std::vector<char> &buf) {
+	std::vector<char> name(strName.begin(), strName.end());
+	CHECK_GT(SaveBuffer(outStream, name), 0);
+	CHECK_GT(SaveBuffer(outStream, buf), 0);
+}
+
 NAMED_PARAMS LoadWeights(const std::string &strFilename) {
 	std::ifstream inFile(strFilename);
 	CHECK(inFile.is_open());
 	NAMED_PARAMS namedParams;
-	for (std::string strLine; std::getline(inFile, strLine); ) {
-		auto iValPos = strLine.find(' ');
-		CHECK(iValPos != std::string::npos);
-		std::string strName(strLine.begin(), strLine.begin() + iValPos);
-
-		++iValPos;
-		CHECK_GT(strLine.size(), iValPos);
-		auto nBinLen = strLine.size() - iValPos;
-		CHECK_EQ(nBinLen % 2, 0);
-		auto pData = strLine.data();
-		std::vector<char> bytes(nBinLen / 2);
-		for (uint64_t i = 0; i < bytes.size(); ++i) {
-			uint16_t hex = *(uint16_t*)(pData + iValPos + i * 2);
-			bytes[i] = char(HexWord2Num(hex));
-		}
-		namedParams[strName] = torch::pickle_load(bytes).toTensor();
+	for (; inFile.peek() != EOF ;) {
+		auto [strName, buf] = LoadNamedBuffer(inFile);
+		auto tensor = torch::pickle_load(std::move(buf)).toTensor();
+		namedParams[std::move(strName)] = std::move(tensor);
 	}
 	return namedParams;
 }
@@ -75,33 +98,8 @@ void SaveWeights(const NAMED_PARAMS &weights, const std::string &strFilename) {
 	std::ofstream outFile(strFilename);
 	CHECK(outFile.is_open());
 	for (const auto &param : weights) {
-		outFile << param.first << " ";
-		auto tensor = param.second;
-		if (!tensor.device().is_cpu()) {
-			tensor = tensor.to(torch::kCPU);
-		}
-		auto tensorBytes = torch::pickle_save(tensor);
-		for (auto b: tensorBytes) {
-			uint16_t hex = Num2HexWord(b);
-			outFile << ((char*)(&hex))[0] << ((char*)(&hex))[1];
-		}
-		outFile << std::endl;
-	}
-}
-
-void Test() {
-	std::string str;
-	std::vector<char> ary = { -1, -2, -3, -4, -5};
-	for (auto b: ary) {
-		uint16_t hex = Num2HexWord(b);
-		str.push_back(((char*)(&hex))[0]);
-		str.push_back(((char*)(&hex))[1]);
-	}
-	ary.clear();
-	auto pData = str.data();
-	for (uint64_t i = 0; i < str.size(); i += 2) {
-		uint16_t hex = *(uint16_t*)(pData + i);
-		ary.push_back(char(HexWord2Num(hex)));
+		auto buf = torch::pickle_save(param.second);
+		SaveNamedBuffer(outFile, param.first, buf);
 	}
 }
 

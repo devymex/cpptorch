@@ -1,5 +1,6 @@
 #include "../creator.hpp"
 #include "../argman.hpp"
+#include "../ctimer.hpp"
 #include "basic_model.hpp"
 
 class JITModel : public BasicModel {
@@ -10,6 +11,9 @@ public:
 		Arg<bool> argReintialize("reinitialize", false, argMan);
 		ParseArgsFromJson(jConf, argMan);
 		m_JitModule = torch::jit::load(argModelFile());
+		torch::jit::getProfilingMode() = false;
+		torch::jit::getExecutorMode() = false;
+		torch::jit::setGraphExecutorOptimize(true);
 		m_bReinit = argReintialize();
 	}
 
@@ -18,6 +22,7 @@ public:
 		for (auto &i: inputs) {
 			jitInputs.emplace_back(std::move(i));
 		}
+		auto autoGradGard = torch::AutoGradMode(BasicModel::is_training());
 		auto outputs = m_JitModule.forward(jitInputs);
 		TENSOR_ARY results;
 		if (outputs.isTuple()) {
