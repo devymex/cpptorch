@@ -201,21 +201,10 @@ int main(int nArgCnt, const char *ppArgs[]) {
 		for (uint64_t nIter = 1; bTrainMode && pTrainLdr->GetBatch(
 				argBatchSize(), data, targets, device); ++nIter) {
 			pOptimizer->ZeroGrad();
-			CTimer t;
-			auto stream = c10::cuda::getCurrentCUDAStream();
-			cudaStreamSynchronize(stream);
-			t.Reset(0);
 			TENSOR_ARY outputs = pModel->Forward(std::move(data));
-			cudaStreamSynchronize(stream);
-			t.Reset(1);
 			float fLoss = pLoss->Backward(std::move(outputs), std::move(targets));
-			cudaStreamSynchronize(stream);
-			t.Reset(2);
 			fTrainLossSum += fLoss;
 			pOptimizer->IterStep();
-			cudaStreamSynchronize(stream);
-			t.Reset(3);
-			LOG(INFO) << t.Format();
 			if (argLogIters() > 0 && nIter % argLogIters() == 0) {
 				LOG(INFO) << "train_iter=" << nIter
 						  << ", loss=" << fLoss / argBatchSize();
