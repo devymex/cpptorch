@@ -23,6 +23,7 @@ public:
 		Arg<std::vector<int>> argOutputSize("output_size",
 				std::vector<int>{416, 416}, argMan);
 		Arg<uint64_t> argMaxTruths("max_truths", 200, argMan);
+		Arg<int64_t> argMaxSize("max_size", -1, argMan);
 		ParseArgsFromJson(jConf, argMan);
 
 		CHECK_EQ(argOutputSize().size(), 2);
@@ -41,6 +42,9 @@ public:
 				m_ImgList.emplace_back(std::move(strLine));
 			}
 		}
+		if (argMaxSize() >= 0) {
+			m_ImgList.resize(argMaxSize());
+		}
 	}
 	uint64_t Size() const override {
 		return m_ImgList.size();
@@ -54,11 +58,11 @@ protected:
 		TENSOR_ARY images;
 		TENSOR_ARY labels;
 		TENSOR_ARY meta;
+#ifdef DEBUG_LOAD_TEST_IMG
+		std::iota(indices.begin(), indices.end(), 0);
+#endif
 		for (uint64_t b = 0; b < indices.size(); ++b) {
 			bfs::path imagePath(m_ImgList[indices[b]]);
-#ifdef DEBUG_LOAD_TEST_IMG
-			imagePath = bfs::path("/mnt/data/prjdata/voc/VOCdevkit/VOC2007/JPEGImages/000012.jpg");
-#endif
 			CHECK(imagePath.parent_path().leaf().string() == "JPEGImages");
 			auto labelPath = imagePath.parent_path().parent_path() / "labels";
 			labelPath /= (imagePath.stem().string() + ".txt");

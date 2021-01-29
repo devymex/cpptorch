@@ -242,11 +242,13 @@ int main(int nArgCnt, const char *ppArgs[]) {
 		// Logging phase
 		std::string strTrainLoss = !bTrainMode ? "N/A"
 				: std::to_string(fTrainLossSum / pTrainLdr->Size());
+		std::string strTestLoss = !pTestLdr->Size() ? "N/A"
+				: std::to_string(fTestLossSum / pTestLdr->Size());
 		std::string strEpoch = !bTrainMode ? "TEST"
 				: std::to_string(nEpoch + nInitEpoch);
 		LOG(INFO) << "epoch " << strEpoch << ": train=" << strTrainLoss
-				  << ", test=" << fTestLossSum / pTestLdr->Size()
-		 		  << ", result: " << pLoss->FlushResults();
+				  << ", test=" << strTestLoss
+				  << ", result: " << pLoss->FlushResults();
 
 		if (argStateSaveEpochs() != 0 && (nEpoch + nInitEpoch)
 				% argStateSaveEpochs() == 0) {

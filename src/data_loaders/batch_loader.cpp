@@ -26,12 +26,11 @@ void BatchLoader::ResetCursor() {
 	if (m_Worker.joinable()) {
 		m_Worker.join();
 	}
-	CHECK_NE(Size(), 0);
 	if (m_Indices.size() != Size()) {
 		m_Indices.resize(Size());
 		std::iota(m_Indices.begin(), m_Indices.end(), 0);
 	}
-	if (m_bShuffle) {
+	if (m_bShuffle || Size() == 0) {
 		std::shuffle(m_Indices.begin(), m_Indices.end(), GetRG());
 		m_nCursor = 0;
 	} else {
@@ -46,7 +45,9 @@ bool BatchLoader::GetBatch(uint64_t nBatchSize, TENSOR_ARY &data,
 	if (m_Worker.joinable()) {
 		m_Worker.join();
 	}
-	CHECK_NE(Size(), 0);
+	if (Size() == 0) {
+		return false;
+	}
 	if (m_Indices.size() != Size()) {
 		ResetCursor();
 	}
