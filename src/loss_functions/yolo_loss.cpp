@@ -107,13 +107,9 @@ private:
 		}
 		__UpdateAnchorInfo(outputs);
 		auto tPredVals = __ConcatenateOutputs(outputs); // batch*anc*row*col, val
-		auto tNegLoss = __NegConfLoss(tPredVals, truths);
-		auto tPosLoss = __PosLoss(tPredVals, truths, batchImgSize);
-#ifdef DEBUG_DUMP_YOLO_DELTA
-		LOG(INFO) << "Loss: Neg(" << tNegLoss.item<float>()
-				  << "), Pos(" << tPosLoss.item<float>() << ")";
-#endif
-		return std::make_pair(tNegLoss + tPosLoss, tPredVals.size(0));
+		auto tNegMask = __GetNegMask(tPredVals, truths);
+		auto tLoss = __CalcLoss(tPredVals, tNegMask, truths, batchImgSize);
+		return std::make_pair(tLoss, tPredVals.size(0));
 	}
 
 	std::vector<std::vector<TRUTH>> __ExtractTruthBoxes(const torch::Tensor &tTruth) {
@@ -173,7 +169,7 @@ private:
 		return torch::cat(std::move(flatOutputs), 0).cpu();
 	}
 
-	torch::Tensor __NegConfLoss(const torch::Tensor &tPredVals,
+	torch::Tensor __GetNegMask(const torch::Tensor &tPredVals,
 			const std::vector<std::vector<TRUTH>> &truths) {
 		auto nBatchSize = truths.size();
 		auto nNumBatchAncs = tPredVals.size(0);
@@ -189,9 +185,8 @@ private:
 		// set mask=1 for all negative boxes whose maximum probs greater than
 		//    m_fNegProbThres
 		auto tNegMask = torch::gt(torch::amax(tPredProbs, 1), m_fNegProbThres);
-		tNegMask = tNegMask.to(torch::kInt32).contiguous();
+		tNegMask = tNegMask.requires_grad_(false).to(torch::kInt32).contiguous();
 		auto pNegMask = tNegMask.data_ptr<int32_t>();
-
 		for (uint64_t i = 0; i < nNumBatchAncs; ++i) {
 			if (pNegMask[i]) {
 				auto pTLBR = (cv::Point2f*)(pPredBoxes + i * 4);
@@ -205,23 +200,10 @@ private:
 				}
 			}
 		}
-		auto tNegConfLoss = m_BCELoss(tPredConf, torch::zeros_like(tPredConf));
-		tNegConfLoss = tNegMask * m_fConfWeight * tNegConfLoss.view(-1);
-#ifdef DEBUG_DUMP_YOLO_DELTA
-		int32_t nCnt = tNegMask.sum().item<int32_t>();
-		float fNegConfSum = (tNegMask * tPredConf.view(-1)).sum().item<float>();
-		float fNegConfLossSum = tNegConfLoss.sum().item<float>();
-		std::ostringstream oss;
-		oss << std::setprecision(5) << std::fixed << std::left;
-		oss << "NegConf: " << std::setw(8) << fNegConfSum / nCnt
-			<< std::setw(8) << nCnt << std::setw(8)
-			<< fNegConfLossSum;
-		LOG(INFO) << oss.str();
-#endif
-		return tNegConfLoss.sum();
+		return tNegMask;
 	}
 
-	torch::Tensor __PosLoss(torch::Tensor &tPredVals,
+	torch::Tensor __CalcLoss(torch::Tensor &tPredVals, torch::Tensor &tNegMask,
 			const std::vector<std::vector<TRUTH>> &truths,
 			const std::vector<cv::Size> &batchImgSize) {
 		auto nBatchSize = truths.size();
@@ -231,6 +213,7 @@ private:
 
 		std::vector<int64_t> posIndices;
 		std::vector<float> xyTruth, xyScale, whTruth, whScale, probsTruth;
+		auto pNegMask = tNegMask.data_ptr<int32_t>();
 		for (uint64_t b = 0; b < nBatchSize; ++b) {
 			for (auto &truth: truths[b]) {
 				auto &truBox = truth.first;
@@ -238,6 +221,7 @@ private:
 				auto [ancInfo, ancPos] = __GetBestAnchor(truBox, batchImgSize[b]);
 				auto iAncInBatch = m_nImgAncCnt * b + ancInfo.nOffset +
 						ancPos.y * ancInfo.cells.width + ancPos.x;
+				pNegMask[iAncInBatch] = 0;
 				auto nAncOff = std::find(posIndices.begin(), posIndices.end(),
 						iAncInBatch) - posIndices.begin();
 				if (nAncOff == posIndices.size()) { // if not exists, push new
@@ -265,6 +249,7 @@ private:
 		auto tPosWH = tSelAncs.slice(1, 2, 4);
 		auto tPosConf = tSelAncs.slice(1, 8, 9).view(-1);
 		auto tPosProbs = tSelAncs.slice(1, 9, nNumVals);
+		auto tAllConf = tPredVals.slice(1, 8, 9).view(-1);
 
 		auto tXYTruth = torch::from_blob(xyTruth.data(),
 				{nNumPosAncs, 2}, optNoGrad).clone();
@@ -279,40 +264,45 @@ private:
 
 		auto tXYLoss = tXYScale * m_BCELoss(tPosXY, tXYTruth);
 		auto tWHLoss = tWHScale * m_MSELoss(tPosWH, tWHTruth);
-		auto tConfLoss = m_BCELoss(tPosConf, torch::ones({nNumPosAncs}, optNoGrad));
+		auto tNegConfLoss = m_BCELoss(tAllConf, torch::zeros_like(tAllConf,
+				optNoGrad)) * tNegMask * m_fConfWeight;
+		auto tPosConfLoss = m_BCELoss(tPosConf, torch::ones_like(tPosConf,
+				optNoGrad));
 		auto tProbsLoss = m_fProbWeight * m_BCELoss(tPosProbs, tProbsTruth);
+		auto tLoss = tNegConfLoss.sum() + tPosConfLoss.sum()
+				+ tProbsLoss.sum() + tXYLoss.sum() + tWHLoss.sum();
 
 #ifdef DEBUG_DUMP_YOLO_DELTA
+		auto tMaxNegConf = (tNegMask * tAllConf).amax();
+		auto tMinPosConf = tPosConf.amin();
+		auto tNegConfLossSum = tNegConfLoss.sum();
+		auto tPosConfLossSum = tPosConfLoss.sum();
 		auto nPosProbCnt = std::count(probsTruth.begin(), probsTruth.end(), 1);
 		auto nNegProbCnt = std::count(probsTruth.begin(), probsTruth.end(), 0);
-		auto tMeanPosConf = tPosConf.sum() / nNumPosAncs;
-		auto tMeanPosProb = (tPosProbs * tProbsTruth).sum() / nPosProbCnt;
-		auto tMeanNegProb = (tPosProbs * (1 - tProbsTruth)).sum() / nNegProbCnt;
-		auto tMeanXY = tPosXY.sum(0) / nNumPosAncs;
-		auto tMeanWH = tPosWH.sum(0) / nNumPosAncs;
+		auto tMinPosProb = (tPosProbs * tProbsTruth + (1 - tProbsTruth)).amin();
+		auto tMaxNegProb = (tPosProbs * (1 - tProbsTruth)).amax();
 		auto tXYLossSum = tXYLoss.sum(0);
 		auto tWHLossSum = tWHLoss.sum(0);
-		auto tConfLossSum = tConfLoss.sum(0);
 		auto tProbsLossSum = tProbsLoss.sum();
 		std::ostringstream oss;
-		oss << std::setprecision(5) << std::fixed << std::left;
-		oss << "PosConf: " << std::setw(8) << tMeanPosConf.item<float>()
-			<< std::setw(8) << nNumPosAncs << std::setw(8)
-			<< tConfLossSum.item<float>();
-		oss << "\nProbs: " << tMeanPosProb.item<float>() << ", "
-				<< tMeanNegProb.item<float>() << ": " << tProbsLossSum.item<float>();
-		oss << "\nX: " << tMeanXY[0].item<float>() << "->" << xyTruth[0] << " * "
-				<< tXYScale[0][0].item<float>() << ": " << tXYLossSum[0].item<float>();
-		oss << "\nY: " << tMeanXY[1].item<float>() << "->" << xyTruth[1] << " * "
-				<< tXYScale[0][1].item<float>() << ": " << tXYLossSum[1].item<float>();
-		oss << "\nW: " << tMeanWH[0].item<float>() << "->" << whTruth[0] << " * "
-				<< tWHScale[0][0].item<float>() << ": " << tWHLossSum[0].item<float>();
-		oss << "\nH: " << tMeanWH[1].item<float>() << "->" << whTruth[1] << " * "
-				<< tWHScale[0][1].item<float>() << ": " << tWHLossSum[1].item<float>();
+		oss << std::setprecision(5) << std::fixed << std::left << tLoss.item<float>();
+		oss << "\nNegConf: " << std::setw(8) << tMaxNegConf.item<float>()
+			<< std::setw(8) << tNegConfLossSum.item<float>();
+		oss << "\nPosConf: " << std::setw(8) << tMinPosConf.item<float>()
+			<< std::setw(8) << tPosConfLossSum.item<float>();
+		oss << "\nProbs: " << tMinPosProb.item<float>() << " vs "
+				<< tMaxNegProb.item<float>() << ": " << tProbsLossSum.item<float>();
+		// oss << "\nX: " << tPosXY[0][0].item<float>() << "->" << xyTruth[0] << " * "
+		// 		<< tXYScale[0][0].item<float>() << ": " << tXYLossSum[0].item<float>();
+		// oss << "\nY: " << tPosXY[0][1].item<float>() << "->" << xyTruth[1] << " * "
+		// 		<< tXYScale[0][1].item<float>() << ": " << tXYLossSum[1].item<float>();
+		// oss << "\nW: " << tPosWH[0][0].item<float>() << "->" << whTruth[0] << " * "
+		// 		<< tWHScale[0][0].item<float>() << ": " << tWHLossSum[0].item<float>();
+		// oss << "\nH: " << tPosWH[0][1].item<float>() << "->" << whTruth[1] << " * "
+		// 		<< tWHScale[0][1].item<float>() << ": " << tWHLossSum[1].item<float>();
 		LOG(INFO) << oss.str();
 #endif
-
-		return tProbsLoss.sum() + tConfLoss.sum() + tXYLoss.sum() + tWHLoss.sum();
+		return tLoss;
 	}
 
 	std::pair<ANCHOR_INFO, cv::Point> __GetBestAnchor(
