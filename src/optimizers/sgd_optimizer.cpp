@@ -51,10 +51,12 @@ public:
 	}
 
 	void EpochStep(uint64_t nEpoch) override {
-		uint64_t nSteps = nEpoch / m_nLRStepSize;
-		float fDecay = std::pow(m_fLRStepGamma, (float)nSteps);
-		static_cast<torch::optim::SGDOptions&>(m_pSGD->defaults())
-				.lr(m_fInitLR * fDecay);
+		if (m_nLRStepSize > 0) {
+			uint64_t nSteps = nEpoch / m_nLRStepSize;
+			float fDecay = std::pow(m_fLRStepGamma, (float)nSteps);
+			static_cast<torch::optim::SGDOptions&>(m_pSGD->defaults())
+					.lr(m_fInitLR * fDecay);
+		}
 	}
 private:
 	float m_fInitLR = 0.f;
