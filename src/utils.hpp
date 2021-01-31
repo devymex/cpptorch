@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include "json.hpp"
+#include "ctimer.hpp"
 
 std::mt19937& GetRG(uint32_t nSeed = 0);
 
