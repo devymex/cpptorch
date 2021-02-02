@@ -101,7 +101,8 @@ protected:
 				torch::TensorOptions(torch::kInt32)).clone());
 		}
 		data = TENSOR_ARY{torch::cat(images)};
-		targets = TENSOR_ARY{torch::cat(labels), torch::cat(meta)};
+		targets = TENSOR_ARY{torch::cat(labels), torch::cat(meta),
+				torch::cat(images)};
 	}
 
 protected:
