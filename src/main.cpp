@@ -13,7 +13,6 @@
 #include "argman.hpp"
 #include "json.hpp"
 #include "creator.hpp"
-#include "ctimer.hpp"
 #include "data_loaders/batch_loader.hpp"
 #include "loss_functions/basic_loss.hpp"
 #include "optimizers/basic_optimizer.hpp"
@@ -79,11 +78,13 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	Arg<uint64_t> argMaxEpoch("max_epoch", 10);
 	Arg<uint64_t> argBatchSize("batch_size", 32);
 	Arg<uint64_t> argThreadNum("thread_num", 0);
+	Arg<uint64_t> argAccGradIters("acc_grad_iters", 0);
 	Arg<std::string> argLogPath("log_path");
 	Arg<uint64_t> argLogIters("log_iters", 0);
 	Arg<std::string> argStatePath("state_path");
 	Arg<uint64_t> argStateSaveEpochs("save_state_epochs", 0);
 	Arg<bool> argLoadLast("load_last", false);
+	Arg<bool> argEpochLog("epoch_log", true);
 	Arg<nlohmann::json> argTrainData("train_data");
 	Arg<nlohmann::json> argTestData("test_data");
 	Arg<nlohmann::json> argOptimizer("optimizer");
@@ -200,11 +201,25 @@ int main(int nArgCnt, const char *ppArgs[]) {
 		float fTrainLossSum = 0.f;
 		for (uint64_t nIter = 1; bTrainMode && pTrainLdr->GetBatch(
 				argBatchSize(), data, targets, device); ++nIter) {
-			pOptimizer->ZeroGrad();
+			if (nIter == 1) {
+				pOptimizer->ZeroGrad();
+			}
 			TENSOR_ARY outputs = pModel->Forward(std::move(data));
 			float fLoss = pLoss->Backward(std::move(outputs), std::move(targets));
 			fTrainLossSum += fLoss;
-			pOptimizer->IterStep();
+			// auto nb = pModel->NamedBuffers();
+			// for (auto &np: pModel->NamedParameters()) {
+			// 	if (np.first.find("conv.weight") != std::string::npos) {
+			// 		auto x = np.second.grad().detach().reshape(-1).contiguous().cpu();
+			// 		auto p = x.data_ptr<float>();
+			// 		LOG(INFO) << np.first << " " << -p[0] << " " << -p[1] << " " << -p[2]
+			// 				<< " " << -p[3] << " " << -p[4] << " " << -p[5];
+			// 	}
+			// }
+			if (argAccGradIters() == 0 || (nIter % argAccGradIters() == 0)) {
+				pOptimizer->IterStep();
+				pOptimizer->ZeroGrad();
+			}
 			if (argLogIters() > 0 && nIter % argLogIters() == 0) {
 				LOG(INFO) << "train_iter=" << nIter
 						  << ", loss=" << fLoss / argBatchSize();
@@ -239,16 +254,17 @@ int main(int nArgCnt, const char *ppArgs[]) {
 			}
 		}
 
-		// Logging phase
-		std::string strTrainLoss = !bTrainMode ? "N/A"
-				: std::to_string(fTrainLossSum / pTrainLdr->Size());
-		std::string strTestLoss = !pTestLdr->Size() ? "N/A"
-				: std::to_string(fTestLossSum / pTestLdr->Size());
-		std::string strEpoch = !bTrainMode ? "TEST"
-				: std::to_string(nEpoch + nInitEpoch);
-		LOG(INFO) << "epoch " << strEpoch << ": train=" << strTrainLoss
-				  << ", test=" << strTestLoss
-				  << ", result: " << pLoss->FlushResults();
+		if (argEpochLog()) { // Logging phase
+			std::string strTrainLoss = !bTrainMode ? "N/A"
+					: std::to_string(fTrainLossSum / pTrainLdr->Size());
+			std::string strTestLoss = !pTestLdr->Size() ? "N/A"
+					: std::to_string(fTestLossSum / pTestLdr->Size());
+			std::string strEpoch = !bTrainMode ? "TEST"
+					: std::to_string(nEpoch + nInitEpoch);
+			LOG(INFO) << "epoch " << strEpoch << ": train=" << strTrainLoss
+					<< ", test=" << strTestLoss
+					<< ", result: " << pLoss->FlushResults();
+		}
 
 		if (argStateSaveEpochs() != 0 && (nEpoch + nInitEpoch)
 				% argStateSaveEpochs() == 0) {
