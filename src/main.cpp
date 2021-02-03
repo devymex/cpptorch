@@ -164,6 +164,9 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	// -------------------------------------------------------------------------
 	auto pTrainLdr = Creator<BatchLoader>::Create(argTrainData());
 	auto pTestLdr = Creator<BatchLoader>::Create(argTestData());
+	if (argAccGradIters() > 0 && bTrainMode) {
+		CHECK_GE(pTrainLdr->Size(), argAccGradIters() * argBatchSize());
+	}
 
 	// Module Preparation
 	// -------------------------------------------------------------------------
@@ -191,6 +194,7 @@ int main(int nArgCnt, const char *ppArgs[]) {
 	// -------------------------------------------------------------------------
 	auto pOptimizer = Creator<BasicOptimizer>::Create(argOptimizer());
 	pOptimizer->SetModel(*pModel);
+	pOptimizer->ZeroGrad();
 
 	// Main Loop
 	// -------------------------------------------------------------------------
@@ -201,9 +205,6 @@ int main(int nArgCnt, const char *ppArgs[]) {
 		float fTrainLossSum = 0.f;
 		for (uint64_t nIter = 1; bTrainMode && pTrainLdr->GetBatch(
 				argBatchSize(), data, targets, device); ++nIter) {
-			if (nIter == 1) {
-				pOptimizer->ZeroGrad();
-			}
 			TENSOR_ARY outputs = pModel->Forward(std::move(data));
 			float fLoss = pLoss->Backward(std::move(outputs), std::move(targets));
 			fTrainLossSum += fLoss;
@@ -225,6 +226,8 @@ int main(int nArgCnt, const char *ppArgs[]) {
 						  << ", loss=" << fLoss / argBatchSize();
 			}
 		}
+		pOptimizer->IterStep();
+		pOptimizer->ZeroGrad();
 		pOptimizer->EpochStep(nEpoch + nInitEpoch);
 
 		// Test phase

@@ -79,7 +79,7 @@ public:
 	float Backward(TENSOR_ARY outputs, TENSOR_ARY targets) override {
 		outputs[0].retain_grad();
 		auto [tLoss, nNumAncs] = __CalcLoss(outputs, targets);
-		tLoss = tLoss.sum() / nNumAncs;
+		tLoss = tLoss.sum();
 		tLoss.backward();
 
 		// for (int64_t i = 0; i < tConfGrad.size(0) / nBatchSize; ++i) {
