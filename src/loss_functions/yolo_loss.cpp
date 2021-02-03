@@ -221,49 +221,43 @@ private:
 		auto tNegMask = torch::ones({nNumBatchAncs},
 				optNoGrad.dtype(torch::kInt32)).contiguous();
 		auto pNegMask = tNegMask.data_ptr<int32_t>();
-		for (uint64_t i = 0; i < nNumBatchAncs; ++i) {
-			if (pMaxProb[i] > m_fNegProbThres) {
-				auto pTLBR = (cv::Point2f*)(pPredBoxes + i * 4);
-				cv::Rect2f predBox = { pTLBR[0], pTLBR[1] };
-				auto fBestIoU = 0.f;
-				for (auto &truth : truths[i / m_nImgAncCnt]) {
-					fBestIoU = std::max(fBestIoU, IoU(predBox, truth.first));
-				}
-				if (fBestIoU > m_fNegIgnoreIoU) {
-					pNegMask[i] = 0;
-				}
-			}
-		}
-		// for (int64_t b = 0; b < nBatchSize; ++b) {
-		// 	for (uint64_t i = 0; i < m_AncInfos.size(); ++i) {
-		// 		auto &ancInfo = m_AncInfos[i];
-		// 		cv::Size2f cellSize(1.f / ancInfo.cells.width,
-		// 							   1.f / ancInfo.cells.height);
-		// 		cv::Rect2f ancBox(cv::Point2f(), cv::Size2f(
-		// 			ancInfo.boxSize.width / batchImgSize[b].width,
-		// 			ancInfo.boxSize.height / batchImgSize[b].height));
-		// 		for (int32_t r = 0; r < ancInfo.cells.height; ++r) {
-		// 			for (int32_t c = 0; c < ancInfo.cells.width; ++c) {
-		// 				auto iAnc = m_nImgAncCnt * b + ancInfo.nOffset +
-		// 						r * ancInfo.cells.width + c;
-		// 				cv::Point2f center((c + 0.5) * cellSize.width,
-		// 								   (r + 0.5) * cellSize.height);
-		// 				ancBox.x = center.x - ancBox.width / 2;
-		// 				ancBox.y = center.y - ancBox.height / 2;
-		// 				if (pNegMask[iAnc] > 0) {
-		// 					auto fBestIoU = 0.f;
-		// 					for (auto &truth: truths[b]) {
-		// 						auto fIoU = IoU(ancBox, truth.first);
-		// 						fBestIoU = std::max(fBestIoU, fIoU);
-		// 					}
-		// 					if (fBestIoU > m_fNegIgnoreIoU) {
-		// 						pNegMask[iAnc] = 0;
-		// 					}
-		// 				}
-		// 			}
+		// for (uint64_t i = 0; i < nNumBatchAncs; ++i) {
+		// 	if (pMaxProb[i] > m_fNegProbThres) {
+		// 		auto pTLBR = (cv::Point2f*)(pPredBoxes + i * 4);
+		// 		cv::Rect2f predBox = { pTLBR[0], pTLBR[1] };
+		// 		auto fBestIoU = 0.f;
+		// 		for (auto &truth : truths[i / m_nImgAncCnt]) {
+		// 			fBestIoU = std::max(fBestIoU, IoU(predBox, truth.first));
+		// 		}
+		// 		if (fBestIoU > m_fNegIgnoreIoU) {
+		// 			pNegMask[i] = 0;
 		// 		}
 		// 	}
 		// }
+		for (uint64_t i = 0; i < m_AncInfos.size(); ++i) {
+			auto &ancInfo = m_AncInfos[i];
+			for (int64_t b = 0; b < nBatchSize; ++b) {
+				cv::Rect2f ancBox(cv::Point2f(), cv::Size2f(
+					ancInfo.boxSize.width / batchImgSize[b].width,
+					ancInfo.boxSize.height / batchImgSize[b].height));
+				auto iAncBase = m_nImgAncCnt * b + ancInfo.nOffset;
+				for (int32_t j = 0; j < ancInfo.cells.area(); ++j) {
+					if (pNegMask[iAncBase + j] > 0) {
+						auto r = j / ancInfo.cells.width + 0.5f;
+						auto c = j % ancInfo.cells.width + 0.5f;
+						ancBox.x = c / ancInfo.cells.width - ancBox.width / 2;
+						ancBox.y = r / ancInfo.cells.height - ancBox.height / 2;
+						auto fBestIoU = 0.f;
+						for (auto &truth: truths[b]) {
+							fBestIoU = std::max(fBestIoU, IoU(ancBox, truth.first));
+						}
+						if (fBestIoU > m_fNegIgnoreIoU) {
+							pNegMask[iAncBase + j] = 0;
+						}
+					}
+				}
+			}
+		}
 		return tNegMask;
 	}
 
@@ -565,10 +559,10 @@ private:
 					b.rect.y *= img.rows;
 					b.rect.width *= img.cols;
 					b.rect.height *= img.rows;
-					cv::RNG rng(0);
-					cv::Scalar color(rng.uniform(0,255), rng.uniform(0, 255),
-							rng.uniform(0, 255));
-					cv::rectangle(img, b.rect, color, 1);
+					std::uniform_int_distribution<int> randClr(0, 255);
+					cv::Scalar color(randClr(GetRG()), randClr(GetRG()),
+							randClr(GetRG()));
+					cv::rectangle(img, b.rect, color, 2);
 					auto iCls = std::max_element(b.probs.begin(), b.probs.end())
 							- b.probs.begin();
 					std::string strClsName = std::to_string(iCls);
@@ -576,7 +570,7 @@ private:
 						strClsName = m_ClsNames[iCls];
 					}
 					cv::putText(img, strClsName, b.rect.tl(),
-							cv::FONT_HERSHEY_SIMPLEX, 1.0, color);
+							cv::FONT_HERSHEY_PLAIN, 1.0, color);
 				}
 			}
 			cv::Point beg((i % cells.width) * cellSize.width,

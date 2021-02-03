@@ -13,19 +13,19 @@
 	},
 	"loss": {
 		"name": "YOLO",
-		"neg_conf_ratio": 1,
+		"neg_conf_ratio": 0,
 		"xy_weight": 0.75,
 		"size_weight": 0.375,
 		"prob_weight": 1,
 		"ignore_iou": 0.5,
 		"class_names": "test/voc.names",
-		"preview": false
+		"preview": true
 	},
 	"train_data": {
 		"name": "YOLO",
 		"shuffle": true,
 		"image_list": "/mnt/data/prjdata/voc/train.txt",
-		"max_size": 64
+		"max_size": -1
 	},
 
 	"test_data": {
@@ -37,7 +37,7 @@
 
 	"optimizer": {
 		"name": "SGD",
-		"learning_rate": 0.0001,
+		"learning_rate": 0.00001,
 		"lr_step_epochs": 0,
 		"lr_step_gamma": 0,
 		"weight_decay": 0.0005,
@@ -48,7 +48,7 @@
 	"batch_size": 8,
 	"acc_grad_iters": 8,
 
-	"save_state_epochs": 100,
+	"save_state_epochs": 1,
 	"state_path": "experiments/states",
 	"load_last": true,
 	"log_path": "experiments/log",

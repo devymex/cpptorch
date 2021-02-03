@@ -7,8 +7,9 @@ image_file_url = 'https://github.com/pjreddie/darknet/raw/master/data/dog.jpg'
 image_filename = path.join(data_path, 'dog.jpg')
 weight_file_url = 'https://pjreddie.com/media/files/yolov3.weights'
 weight_filename = path.join(data_path, 'yolov3.weights')
+torch.set_printoptions(sci_mode=False)
 
-num_cls    = 80
+num_cls    = 20
 conf_thres = 0.24
 nms_thres  = 0.45
 input_size = (416, 416)
@@ -196,8 +197,10 @@ class Yolov3Model(nn.Module):
         return (output0, output1, output2)
 
 def load_param(tensor, bin_stream):
-    float_ary = np.frombuffer(bin_stream.read(tensor.numel() * 4), dtype='<f4')
-    tensor.copy_(torch.tensor(float_ary.copy()).reshape_as(tensor))
+    data = bin_stream.read(tensor.numel() * 4)
+    if len(data) == tensor.numel() * 4:
+        float_ary = np.frombuffer(data, dtype='<f4')
+        tensor.copy_(torch.tensor(float_ary.copy()).reshape_as(tensor))
 
 @torch.no_grad()
 def load_params_file(filename, module):
@@ -243,6 +246,7 @@ if not path.exists(weight_filename):
     url_req.urlretrieve(weight_file_url, weight_filename)
 
 # Load image data and do preprocessing
+image_filename = '/mnt/data/prjdata/voc/VOCdevkit/VOC2007/JPEGImages/000012.jpg'
 img = cv2.imread(image_filename, cv2.IMREAD_COLOR)
 data = cv2.cvtColor(cv2.resize(img, input_size), cv2.COLOR_RGB2BGR)
 data = torch.tensor(data) / 255.0
@@ -250,15 +254,17 @@ data = data.permute(2, 0, 1).reshape(1, 3, input_size[1], input_size[0])
 
 # Create model and do inference
 model = Yolov3Model(num_cls, input_size, anchors, masks)
+weight_filename = './test/darknet53.conv.74'
 load_params_file(weight_filename, model)
 
 # Testing for script and trace
 model.train()
 script_model = torch.jit.script(model)
-model.eval()
-trace_model = torch.jit.trace(model, data)
+# model.eval()
+# trace_model = torch.jit.trace(model, data)
 torch.jit.save(script_model, path.join(data_path, 'yolov3.pth'))
 
+model = torch.jit.load(path.join(data_path, 'yolov3_ft.pth'))
 model_outputs = model.forward(data)
 reshaped_outputs = []
 for output in model_outputs:
@@ -269,25 +275,27 @@ predict[:,:,5:] *= predict[:,:,4].unsqueeze(2) # prob *= conf
 predict[:,:,5:] *= torch.gt(predict[:,:,5:], conf_thres) # low conf are masked out 
 
 # NMS
+all_boxes = []
+for boxes in predict[0]:
+	conf = boxes[4]
+	if conf > conf_thres:
+		all_boxes.append(boxes.view(1, -1))
 best_boxes = []
-for predict in predict:
-    all_boxes = []
-    for boxes in predict:
-        conf = boxes[4]
-        if conf > conf_thres:
-            all_boxes.append(boxes.view(1, -1))
-    if len(all_boxes) > 0:
-        all_boxes = nms(torch.cat(all_boxes))
-        cls_ids = torch.argmax(all_boxes[:, 5:], dim=1)
-        for box_idx, best_cls_id in enumerate(cls_ids):
-            if all_boxes[box_idx, 5 + best_cls_id] > conf_thres:
-                box = torch.cat((all_boxes[box_idx, :4],
-                    torch.tensor([np.float32(best_cls_id)])))
-                best_boxes.append(box)
+if len(all_boxes) > 0:
+	all_boxes = nms(torch.cat(all_boxes))
+	cls_ids = torch.argmax(all_boxes[:, 5:], dim=1)
+	for box_idx, best_cls_id in enumerate(cls_ids):
+		if all_boxes[box_idx, 5 + best_cls_id] > conf_thres:
+			box = torch.cat((all_boxes[box_idx, :4],
+				torch.tensor([np.float32(best_cls_id)])))
+			best_boxes.append(box)
 
 img_size = (img.shape[1], img.shape[0])
 for box in best_boxes: # Draw and save precition results
     pt1 = (int(box[0] * img_size[0]), int(box[1] * img_size[1]))
     pt2 = (int(box[2] * img_size[0]), int(box[3] * img_size[1]))
     cv2.rectangle(img, pt1, pt2, (0, 255, 0))
+    cv2.putText(img, str(int(box[4].item())), pt1, cv2.FONT_HERSHEY_SIMPLEX,
+                   1, (0, 0, 255), 1, cv2.LINE_AA)
+
 cv2.imwrite(path.join(data_path, 'predict.png'), img)

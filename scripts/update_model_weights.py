@@ -1,36 +1,42 @@
-import io, argparse, torch
+import io, sys, struct, torch
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--script_model', nargs=1, required=True, type=str,
-					help='Script module for export')
-parser.add_argument('--weight_file', nargs=1, required=True, type=str,
-					help='Override weights by specific file')
-parser.add_argument('--output_file', nargs=1, required=True, type=str,
-					help='')
-args = parser.parse_args()
+def load_buffer(stream):
+	bin_size = stream.read(8)
+	if len(bin_size) == 0:
+		return None
+	size = struct.unpack('<Q', bin_size)[0]
+	return stream.read(size)
 
-def load_weights(model):
-	f = open(args.weight_file[0], 'r')
-	lines = f.read().splitlines()
-	loaded_params = {}
-	for line in lines:
-		name, data = line.split(' ')
-		tensor = torch.load(io.BytesIO(bytes.fromhex(data)))
-		loaded_params[name] = tensor.cpu()
-	for name, param in model.named_parameters():
-		param.requires_grad = False
-		if name in loaded_params:
-			param.copy_(loaded_params[name])
-			print('Loaded', name)
-	for name, buf in model.named_buffers():
-		if name in loaded_params:
-			buf.copy_(loaded_params[name])
-			print('Loaded', name)
+def load_named_tensor(stream):
+	name = load_buffer(stream)
+	buf = load_buffer(stream)
+	if name is None or buf is None:
+		return None
+	name = name.decode()
+	buf = torch.load(io.BytesIO(buf))
+	return name, buf
 
-model = torch.jit.load(args.script_model[0])
+model = torch.jit.load(sys.argv[1])
 model.cpu()
 model.train(False)
-if args.weight_file is not None:
-	load_weights(model)
 
-torch.jit.save(model, args.output_file[0])
+loaded_params = {}
+bin_file = open(sys.argv[2], 'rb')
+while True:
+	named_tensor = load_named_tensor(bin_file)
+	if named_tensor is None:
+		break
+	loaded_params[named_tensor[0]] = named_tensor[1]
+
+for name, param in model.named_parameters():
+	param.requires_grad = False
+	if name in loaded_params:
+		param.copy_(loaded_params[name])
+		print('Loaded', name)
+
+for name, buf in model.named_buffers():
+	if name in loaded_params:
+		buf.copy_(loaded_params[name])
+		print('Loaded', name)
+
+torch.jit.save(model, sys.argv[3])
