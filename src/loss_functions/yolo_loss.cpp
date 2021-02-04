@@ -44,6 +44,10 @@ class YOLOLoss : public BasicLoss {
 	uint64_t m_nImgAncCnt = 0; // amount of different size anchors in an image
 	bool m_bPreview = false;
 
+	torch::nn::MSELoss m_MSELoss;
+	torch::nn::BCELoss m_BCELoss;
+	torch::nn::BCELoss m_BCELossWeight;
+
 public:
 	void Initialize(const nlohmann::json &jConf) override {
 		BasicLoss::Initialize(jConf);
@@ -63,6 +67,9 @@ public:
 		m_fProbWeight = argProbWeight();
 		m_fNegIgnoreIoU = argIgnoreIoU();
 		m_bPreview = argPreview();
+		m_MSELoss->options.reduction() = torch::kNone; // for respective scales
+		m_BCELoss->options.reduction() = torch::kNone;
+		m_BCELossWeight->options.reduction() = torch::kNone;
 
 		if (!argClassNames().empty()) {
 			std::ifstream listFile(argClassNames());
@@ -221,40 +228,16 @@ private:
 		auto tNegMask = torch::ones({nNumBatchAncs},
 				optNoGrad.dtype(torch::kInt32)).contiguous();
 		auto pNegMask = tNegMask.data_ptr<int32_t>();
-		// for (uint64_t i = 0; i < nNumBatchAncs; ++i) {
-		// 	if (pMaxProb[i] > m_fNegProbThres) {
-		// 		auto pTLBR = (cv::Point2f*)(pPredBoxes + i * 4);
-		// 		cv::Rect2f predBox = { pTLBR[0], pTLBR[1] };
-		// 		auto fBestIoU = 0.f;
-		// 		for (auto &truth : truths[i / m_nImgAncCnt]) {
-		// 			fBestIoU = std::max(fBestIoU, IoU(predBox, truth.first));
-		// 		}
-		// 		if (fBestIoU > m_fNegIgnoreIoU) {
-		// 			pNegMask[i] = 0;
-		// 		}
-		// 	}
-		// }
-		for (uint64_t i = 0; i < m_AncInfos.size(); ++i) {
-			auto &ancInfo = m_AncInfos[i];
-			for (int64_t b = 0; b < nBatchSize; ++b) {
-				cv::Rect2f ancBox(cv::Point2f(), cv::Size2f(
-					ancInfo.boxSize.width / batchImgSize[b].width,
-					ancInfo.boxSize.height / batchImgSize[b].height));
-				auto iAncBase = m_nImgAncCnt * b + ancInfo.nOffset;
-				for (int32_t j = 0; j < ancInfo.cells.area(); ++j) {
-					if (pNegMask[iAncBase + j] > 0) {
-						auto r = j / ancInfo.cells.width + 0.5f;
-						auto c = j % ancInfo.cells.width + 0.5f;
-						ancBox.x = c / ancInfo.cells.width - ancBox.width / 2;
-						ancBox.y = r / ancInfo.cells.height - ancBox.height / 2;
-						auto fBestIoU = 0.f;
-						for (auto &truth: truths[b]) {
-							fBestIoU = std::max(fBestIoU, IoU(ancBox, truth.first));
-						}
-						if (fBestIoU > m_fNegIgnoreIoU) {
-							pNegMask[iAncBase + j] = 0;
-						}
-					}
+		for (uint64_t i = 0; i < nNumBatchAncs; ++i) {
+			if (pMaxProb[i] > m_fNegProbThres) {
+				auto pTLBR = (cv::Point2f*)(pPredBoxes + i * 4);
+				cv::Rect2f predBox = { pTLBR[0], pTLBR[1] };
+				auto fBestIoU = 0.f;
+				for (auto &truth : truths[i / m_nImgAncCnt]) {
+					fBestIoU = std::max(fBestIoU, IoU(predBox, truth.first));
+				}
+				if (fBestIoU > m_fNegIgnoreIoU) {
+					pNegMask[i] = 0;
 				}
 			}
 		}
@@ -344,51 +327,14 @@ private:
 		auto tProbsTruth = torch::from_blob(probsTruth.data(),
 				{nNumPosAncs, nNumClasses}, optNoGrad).clone();
 
-		torch::nn::MSELoss mseLoss(torch::nn::MSELossOptions(torch::kNone));
-		torch::nn::BCELoss bceLoss1, bceLoss2;
-		bceLoss1->options.reduction() = torch::kNone;
-		bceLoss2->options.reduction() = torch::kNone;
-		bceLoss2->options.weight() = tConfMask;
-
-		auto tXYLoss = tXYScale * bceLoss1(tPosXY, tXYTruth);
-		auto tWHLoss = tWHScale * mseLoss(tPosWH, tWHTruth);
-		auto tProbsLoss = m_fProbWeight * bceLoss1(tPosProbs, tProbsTruth);
-		auto tConfLoss = bceLoss2(tAllConf, tConfTruth);
+		m_BCELossWeight->options.weight() = tConfMask;
+		auto tXYLoss = tXYScale * m_BCELoss(tPosXY, tXYTruth);
+		auto tWHLoss = tWHScale * m_MSELoss(tPosWH, tWHTruth);
+		auto tProbsLoss = m_fProbWeight * m_BCELoss(tPosProbs, tProbsTruth);
+		auto tConfLoss = m_BCELossWeight(tAllConf, tConfTruth);
 		auto tLoss = tConfLoss.sum() + tProbsLoss.sum() + tXYLoss.sum() + tWHLoss.sum();
 
-		// tPredVals.retain_grad();
-		// tLoss.backward();
-		// auto tConfGrad = tPredVals.grad().contiguous();
-		// auto pConfGrad = tConfGrad.data_ptr<float>();
-		// auto tAllVals = tPredVals.contiguous();
-		// auto pAllVals = tAllVals.data_ptr<float>();
-		// std::ofstream dumpFile("test/grad.txt");
-		// for (int64_t i = 0; i < tConfGrad.size(0) / nBatchSize; ++i) {
-		// 	for (int64_t j = 0; j < tConfGrad.size(1); ++j) {
-		// 		float fGrad = pConfGrad[i * tConfGrad.size(1) + j];
-		// 		float y = pAllVals[i * tConfGrad.size(1) + j];
-		// 		if (j == 8 || (pConfMask[i] > 0 && (j > 8 || j < 2))) {
-		// 			fGrad *= y * (1 - y);
-		// 		} else if (j >=4 && j < 8) {
-		// 			continue;
-		// 		}
-		// 		dumpFile << -fGrad << " ";
-		// 	}
-		// 	dumpFile << std::endl;
-		// }
-		// dumpFile.close();
-
 #ifdef DEBUG_DUMP_YOLO_DELTA
-		// static int idx = 0;
-		// auto dump = torch::pickle_save(tPosIndices.cpu());
-		// std::string strFilename = "test/dump_data/target" + std::to_string(idx) + ".pkl";
-		// std::ofstream dataFile(strFilename, std::ios::binary);
-		// dataFile.write(dump.data(), dump.size());
-		// dataFile.close();
-		// if (++idx >= 8) {
-		// 	exit(0);
-		// }
-
 		float fMinPosConf = 1.0f, fMaxNegConf = 0.f;
 		tAllConf = tAllConf.contiguous();
 		auto pAllConf = tAllConf.data_ptr<float>();
@@ -404,7 +350,6 @@ private:
 				}
 			}
 		}
-
 		auto tXYLossSum = tXYLoss.sum(0);
 		auto tWHLossSum = tWHLoss.sum(0);
 		auto tConfLossSum = tConfLoss.sum();
